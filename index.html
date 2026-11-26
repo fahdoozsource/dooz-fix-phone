@@ -1,1 +1,101 @@
-<h1>hello</h1>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shop</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Tahoma,Arial,sans-serif}
+body{background:#f4f4f4;color:#222;padding-bottom:80px}
+header{background:#e63946;color:#fff;padding:14px;display:flex;justify-content:space-between;align-items:center}
+header button{background:#fff;color:#e63946;border:0;padding:6px 12px;border-radius:8px}
+#grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:10px}
+.card{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px #0002}
+.price{color:#e63946;font-weight:bold;margin:6px 0}
+.btn{background:#e63946;color:#fff;border:0;padding:10px;border-radius:8px;width:100%;font-size:15px;margin-top:6px}
+.gray{background:#777}
+#cartbar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 6px #0003}
+#modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000a;align-items:center;justify-content:center}
+#box{background:#fff;border-radius:12px;padding:16px;width:90%;max-width:420px;max-height:85vh;overflow:auto}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
+.row button{width:30px;height:30px;border-radius:50%;border:0;background:#eee;font-size:16px}
+</style>
+</head>
+<body>
+<header><b id="name"></b><button id="lang">English</button></header>
+<div id="grid"></div>
+<div id="cartbar"><button class="btn" id="cartBtn"></button></div>
+<div id="modal"><div id="box"></div></div>
+
+<script>
+var CONFIG = {
+  name: {ar: "مطعم النخيل", en: "Al Nakheel Restaurant"},
+  whatsapp: "201000000000",
+  cur: {ar: "ج.م", en: "EGP"},
+  products: [
+    {id:1, n:{ar:"برجر لحم", en:"Beef Burger"}, p:120, d:{ar:"برجر لحم طازج مع بطاطس", en:"Fresh beef burger with fries"}},
+    {id:2, n:{ar:"بيتزا مارجريتا", en:"Margherita Pizza"}, p:150, d:{ar:"بيتزا بالجبنة والطماطم", en:"Pizza with cheese and tomato"}},
+    {id:3, n:{ar:"عصير برتقال", en:"Orange Juice"}, p:40, d:{ar:"عصير طازج", en:"Fresh juice"}}
+  ]
+};
+var T = {
+  ar:{cart:"السلة", add:"أضف للسلة", send:"إرسال الطلب على واتساب", total:"الإجمالي", empty:"السلة فاضية", close:"إغلاق", hello:"مرحبًا، أريد طلب:", other:"English"},
+  en:{cart:"Cart", add:"Add to cart", send:"Send order on WhatsApp", total:"Total", empty:"Your cart is empty", close:"Close", hello:"Hello, I would like to order:", other:"العربية"}
+};
+var lang = "ar";
+var cart = {};
+
+function count(){var c=0;for(var k in cart){c+=cart[k]}return c}
+function total(){var t=0;CONFIG.products.forEach(function(x){t+=(cart[x.id]||0)*x.p});return t}
+
+function render(){
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang=="ar" ? "rtl" : "ltr";
+  document.getElementById("name").textContent = CONFIG.name[lang];
+  document.getElementById("lang").textContent = T[lang].other;
+  document.getElementById("cartBtn").textContent = T[lang].cart + " (" + count() + ") - " + total() + " " + CONFIG.cur[lang];
+  var h = "";
+  CONFIG.products.forEach(function(x){
+    h += '<div class="card"><b>' + x.n[lang] + '</b><div>' + x.d[lang] + '</div><div class="price">' + x.p + ' ' + CONFIG.cur[lang] + '</div><button class="btn" onclick="add(' + x.id + ')">' + T[lang].add + '</button></div>';
+  });
+  document.getElementById("grid").innerHTML = h;
+}
+
+function add(id){cart[id]=(cart[id]||0)+1; render()}
+function chg(id,d){cart[id]=(cart[id]||0)+d; if(cart[id]<=0){delete cart[id]} render(); showCart()}
+function closeM(){document.getElementById("modal").style.display="none"}
+
+function showCart(){
+  var h = "<h3>" + T[lang].cart + "</h3>";
+  var any = false;
+  CONFIG.products.forEach(function(x){
+    if(cart[x.id]){
+      any = true;
+      h += '<div class="row"><span>' + x.n[lang] + '<br><small>' + x.p + ' ' + CONFIG.cur[lang] + '</small></span><span><button onclick="chg(' + x.id + ',-1)">-</button> ' + cart[x.id] + ' <button onclick="chg(' + x.id + ',1)">+</button></span></div>';
+    }
+  });
+  if(!any){h += "<p style='padding:14px 0'>" + T[lang].empty + "</p>"}
+  else{
+    h += "<p style='margin-top:10px'><b>" + T[lang].total + ": " + total() + " " + CONFIG.cur[lang] + "</b></p>";
+    h += '<button class="btn" onclick="sendOrder()">' + T[lang].send + '</button>';
+  }
+  h += '<button class="btn gray" onclick="closeM()">' + T[lang].close + '</button>';
+  document.getElementById("box").innerHTML = h;
+  document.getElementById("modal").style.display = "flex";
+}
+
+function sendOrder(){
+  var msg = T[lang].hello + "\n";
+  CONFIG.products.forEach(function(x){
+    if(cart[x.id]){msg += "- " + x.n[lang] + " x" + cart[x.id] + " = " + (x.p*cart[x.id]) + " " + CONFIG.cur[lang] + "\n"}
+  });
+  msg += T[lang].total + ": " + total() + " " + CONFIG.cur[lang];
+  window.open("https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(msg), "_blank");
+}
+
+document.getElementById("lang").onclick = function(){lang = (lang=="ar") ? "en" : "ar"; render()};
+document.getElementById("cartBtn").onclick = showCart;
+render();
+</script>
+</body>
+</html>
