@@ -28,16 +28,27 @@ header button{background:#fff;color:#e63946;border:0;padding:6px 12px;border-rad
 <div id="modal"><div id="box"></div></div>
 
 <script>
-var CONFIG = {
-  name: {ar: "مطعم النخيل", en: "Al Nakheel Restaurant"},
+const CONFIG = {
+  name: { ar: "متجرنا", en: "Our Store" },
   whatsapp: "201000000000",
-  cur: {ar: "ج.م", en: "EGP"},
+  cur: { ar: "ج.م", en: "EGP" },
+  categories: [
+    { id: "all", name: { ar: "الكل", en: "All" } },
+    { id: "cheese", name: { ar: "الأجبان", en: "Cheese" } },
+    { id: "coldcuts", name: { ar: "اللانشون", en: "Cold Cuts" } },
+    { id: "dairy", name: { ar: "الألبان", en: "Dairy" } },
+    { id: "snacks", name: { ar: "تسالي", en: "Snacks" } },
+    { id: "meat", name: { ar: "لحوم", en: "Meat" } }
+  ],
   products: [
-    {id:1, n:{ar:"برجر لحم", en:"Beef Burger"}, p:120, d:{ar:"برجر لحم طازج مع بطاطس", en:"Fresh beef burger with fries"}},
-    {id:2, n:{ar:"بيتزا مارجريتا", en:"Margherita Pizza"}, p:150, d:{ar:"بيتزا بالجبنة والطماطم", en:"Pizza with cheese and tomato"}},
-    {id:3, n:{ar:"عصير برتقال", en:"Orange Juice"}, p:40, d:{ar:"عصير طازج", en:"Fresh juice"}}
+    { id: 1, category: "cheese", n: { ar: "جبنة رومي", en: "Rumi Cheese" }, p: 120 },
+    { id: 2, category: "coldcuts", n: { ar: "لانشون", en: "Cold Cuts" }, p: 80 },
+    { id: 3, category: "dairy", n: { ar: "لبن", en: "Milk" }, p: 25 },
+    { id: 4, category: "snacks", n: { ar: "شيبسي", en: "Chips" }, p: 10 },
+    { id: 5, category: "meat", n: { ar: "لحم مفروم", en: "Minced Meat" }, p: 250 }
   ]
 };
+
 var T = {
   ar:{cart:"السلة", add:"أضف للسلة", send:"إرسال الطلب على واتساب", total:"الإجمالي", empty:"السلة فاضية", close:"إغلاق", hello:"مرحبًا، أريد طلب:", other:"English"},
   en:{cart:"Cart", add:"Add to cart", send:"Send order on WhatsApp", total:"Total", empty:"Your cart is empty", close:"Close", hello:"Hello, I would like to order:", other:"العربية"}
