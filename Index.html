@@ -3,113 +3,98 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>متجري</title>
+<title>Shop</title>
 <style>
-:root{--main:#e63946;--bg:#f8f9fa}
 *{box-sizing:border-box;margin:0;padding:0;font-family:Tahoma,Arial,sans-serif}
-body{background:var(--bg);color:#222;padding-bottom:80px}
-header{background:var(--main);color:#fff;padding:14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
-header h1{font-size:20px}
-.lang{background:#fff;color:var(--main);border:0;padding:6px 12px;border-radius:8px;cursor:pointer}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:12px}
-.card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 6px #0002;cursor:pointer}
-.card img{width:100%;height:120px;object-fit:cover;background:#ddd}
-.card div{padding:8px}
-.price{color:var(--main);font-weight:bold}
-.btn{background:var(--main);color:#fff;border:0;padding:10px;border-radius:8px;width:100%;cursor:pointer;margin-top:6px;font-size:15px}
-.modal{display:none;position:fixed;inset:0;background:#000a;z-index:10;align-items:center;justify-content:center}
-.modal.open{display:flex}
-.box{background:#fff;border-radius:14px;padding:16px;width:90%;max-width:420px;max-height:85vh;overflow:auto}
-.box img{width:100%;height:200px;object-fit:cover;border-radius:10px}
-.cartbar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 8px #0003}
-.row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee}
-.qty button{width:28px;height:28px;border-radius:50%;border:0;background:#eee;font-size:16px;cursor:pointer}
+body{background:#f4f4f4;color:#222;padding-bottom:80px}
+header{background:#e63946;color:#fff;padding:14px;display:flex;justify-content:space-between;align-items:center}
+header button{background:#fff;color:#e63946;border:0;padding:6px 12px;border-radius:8px}
+#grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:10px}
+.card{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px #0002}
+.price{color:#e63946;font-weight:bold;margin:6px 0}
+.btn{background:#e63946;color:#fff;border:0;padding:10px;border-radius:8px;width:100%;font-size:15px;margin-top:6px}
+.gray{background:#777}
+#cartbar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 6px #0003}
+#modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000a;align-items:center;justify-content:center}
+#box{background:#fff;border-radius:12px;padding:16px;width:90%;max-width:420px;max-height:85vh;overflow:auto}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
+.row button{width:30px;height:30px;border-radius:50%;border:0;background:#eee;font-size:16px}
 </style>
 </head>
 <body>
-<header><h1 id="shopName"></h1><button class="lang" id="langBtn">English</button></header>
-<div class="grid" id="grid"></div>
-
-<div class="cartbar"><button class="btn" id="openCart"></button></div>
-
-<div class="modal" id="prodModal"><div class="box" id="prodBox"></div></div>
-<div class="modal" id="cartModal"><div class="box" id="cartBox"></div></div>
+<header><b id="name"></b><button id="lang">English</button></header>
+<div id="grid"></div>
+<div id="cartbar"><button class="btn" id="cartBtn"></button></div>
+<div id="modal"><div id="box"></div></div>
 
 <script>
-// ===== CONFIG: عدّل هنا بس =====
-const CONFIG = {
-  shopName: {ar: "مطعم النخيل", en: "Al Nakheel Restaurant"},
-  whatsapp: "201000000000", // رقم الواتساب بكود الدولة من غير + أو أصفار
-  currency: {ar: "ج.م", en: "EGP"},
-  color: "#e63946",
+var CONFIG = {
+  name: {ar: "مطعم النخيل", en: "Al Nakheel Restaurant"},
+  whatsapp: "201000000000",
+  cur: {ar: "ج.م", en: "EGP"},
   products: [
-    {id:1, name:{ar:"برجر لحم", en:"Beef Burger"}, price:120, img:"", desc:{ar:"برجر لحم طازج مع بطاطس", en:"Fresh beef burger with fries"}},
-    {id:2, name:{ar:"بيتزا مارجريتا", en:"Margherita Pizza"}, price:150, img:"", desc:{ar:"بيتزا بالجبنة والطماطم", en:"Pizza with cheese and tomato"}},
-    {id:3, name:{ar:"عصير برتقال", en:"Orange Juice"}, price:40, img:"", desc:{ar:"عصير طازج", en:"Fresh juice"}}
+    {id:1, n:{ar:"برجر لحم", en:"Beef Burger"}, p:120, d:{ar:"برجر لحم طازج مع بطاطس", en:"Fresh beef burger with fries"}},
+    {id:2, n:{ar:"بيتزا مارجريتا", en:"Margherita Pizza"}, p:150, d:{ar:"بيتزا بالجبنة والطماطم", en:"Pizza with cheese and tomato"}},
+    {id:3, n:{ar:"عصير برتقال", en:"Orange Juice"}, p:40, d:{ar:"عصير طازج", en:"Fresh juice"}}
   ]
 };
-// ================================
-
-const T = {
-  ar:{cart:"السلة", add:"أضف للسلة", send:"إرسال الطلب على واتساب", total:"الإجمالي", empty:"السلة فاضية", close:"إغلاق", hello:"مرحبًا، أريد طلب:", lang:"English"},
-  en:{cart:"Cart", add:"Add to cart", send:"Send order on WhatsApp", total:"Total", empty:"Your cart is empty", close:"Close", hello:"Hello, I would like to order:", lang:"العربية"}
+var T = {
+  ar:{cart:"السلة", add:"أضف للسلة", send:"إرسال الطلب على واتساب", total:"الإجمالي", empty:"السلة فاضية", close:"إغلاق", hello:"مرحبًا، أريد طلب:", other:"English"},
+  en:{cart:"Cart", add:"Add to cart", send:"Send order on WhatsApp", total:"Total", empty:"Your cart is empty", close:"Close", hello:"Hello, I would like to order:", other:"العربية"}
 };
-let lang = localStorage.getItem("lang") || "ar";
-let cart = JSON.parse(localStorage.getItem("cart") || "{}");
-document.documentElement.style.setProperty("--main", CONFIG.color);
+var lang = "ar";
+var cart = {};
 
-function save(){localStorage.setItem("cart", JSON.stringify(cart)); localStorage.setItem("lang", lang)}
-function count(){return Object.values(cart).reduce((a,b)=>a+b,0)}
-function total(){return CONFIG.products.reduce((s,p)=>s+(cart[p.id]||0)*p.price,0)}
+function count(){var c=0;for(var k in cart){c+=cart[k]}return c}
+function total(){var t=0;CONFIG.products.forEach(function(x){t+=(cart[x.id]||0)*x.p});return t}
 
 function render(){
   document.documentElement.lang = lang;
-  document.documentElement.dir = lang==="ar" ? "rtl" : "ltr";
-  document.title = CONFIG.shopName[lang];
-  document.getElementById("shopName").textContent = CONFIG.shopName[lang];
-  document.getElementById("langBtn").textContent = T[lang].lang;
-  document.getElementById("openCart").textContent = T[lang].cart + " (" + count() + ") - " + total() + " " + CONFIG.currency[lang];
-  document.getElementById("grid").innerHTML = CONFIG.products.map(p =>
-    `<div class="card" onclick="showProd(${p.id})"><img src="${p.img}" alt=""><div><b>${p.name[lang]}</b><div class="price">${p.price} ${CONFIG.currency[lang]}</div></div></div>`
-  ).join("");
-  save();
+  document.documentElement.dir = lang=="ar" ? "rtl" : "ltr";
+  document.getElementById("name").textContent = CONFIG.name[lang];
+  document.getElementById("lang").textContent = T[lang].other;
+  document.getElementById("cartBtn").textContent = T[lang].cart + " (" + count() + ") - " + total() + " " + CONFIG.cur[lang];
+  var h = "";
+  CONFIG.products.forEach(function(x){
+    h += '<div class="card"><b>' + x.n[lang] + '</b><div>' + x.d[lang] + '</div><div class="price">' + x.p + ' ' + CONFIG.cur[lang] + '</div><button class="btn" onclick="add(' + x.id + ')">' + T[lang].add + '</button></div>';
+  });
+  document.getElementById("grid").innerHTML = h;
 }
 
-function showProd(id){
-  const p = CONFIG.products.find(x=>x.id===id);
-  document.getElementById("prodBox").innerHTML =
-    `<img src="${p.img}" alt=""><h3 style="margin:8px 0">${p.name[lang]}</h3><p>${p.desc[lang]}</p><p class="price">${p.price} ${CONFIG.currency[lang]}</p><button class="btn" onclick="addToCart(${p.id})">${T[lang].add}</button><button class="btn" style="background:#777" onclick="closeAll()">${T[lang].close}</button>`;
-  document.getElementById("prodModal").classList.add("open");
-}
-
-function addToCart(id){cart[id]=(cart[id]||0)+1; closeAll(); render()}
-function change(id,d){cart[id]=(cart[id]||0)+d; if(cart[id]<=0) delete cart[id]; render(); showCart()}
-function closeAll(){document.querySelectorAll(".modal").forEach(m=>m.classList.remove("open"))}
+function add(id){cart[id]=(cart[id]||0)+1; render()}
+function chg(id,d){cart[id]=(cart[id]||0)+d; if(cart[id]<=0){delete cart[id]} render(); showCart()}
+function closeM(){document.getElementById("modal").style.display="none"}
 
 function showCart(){
-  const items = CONFIG.products.filter(p=>cart[p.id]);
-  let html = `<h3>${T[lang].cart}</h3>`;
-  if(!items.length){html += `<p style="padding:16px 0">${T[lang].empty}</p>`}
+  var h = "<h3>" + T[lang].cart + "</h3>";
+  var any = false;
+  CONFIG.products.forEach(function(x){
+    if(cart[x.id]){
+      any = true;
+      h += '<div class="row"><span>' + x.n[lang] + '<br><small>' + x.p + ' ' + CONFIG.cur[lang] + '</small></span><span><button onclick="chg(' + x.id + ',-1)">-</button> ' + cart[x.id] + ' <button onclick="chg(' + x.id + ',1)">+</button></span></div>';
+    }
+  });
+  if(!any){h += "<p style='padding:14px 0'>" + T[lang].empty + "</p>"}
   else{
-    html += items.map(p=>`<div class="row"><span>${p.name[lang]}<br><small>${p.price} ${CONFIG.currency[lang]}</small></span><span class="qty"><button onclick="change(${p.id},-1)">-</button> ${cart[p.id]} <button onclick="change(${p.id},1)">+</button></span></div>`).join("");
-    html += `<p style="margin-top:10px"><b>${T[lang].total}: ${total()} ${CONFIG.currency[lang]}</b></p><button class="btn" onclick="sendOrder()">${T[lang].send}</button>`;
+    h += "<p style='margin-top:10px'><b>" + T[lang].total + ": " + total() + " " + CONFIG.cur[lang] + "</b></p>";
+    h += '<button class="btn" onclick="sendOrder()">' + T[lang].send + '</button>';
   }
-  html += `<button class="btn" style="background:#777" onclick="closeAll()">${T[lang].close}</button>`;
-  document.getElementById("cartBox").innerHTML = html;
-  document.getElementById("cartModal").classList.add("open");
+  h += '<button class="btn gray" onclick="closeM()">' + T[lang].close + '</button>';
+  document.getElementById("box").innerHTML = h;
+  document.getElementById("modal").style.display = "flex";
 }
 
 function sendOrder(){
-  const items = CONFIG.products.filter(p=>cart[p.id]);
-  let msg = T[lang].hello + "\n";
-  items.forEach(p=>{msg += `- ${p.name[lang]} x${cart[p.id]} = ${p.price*cart[p.id]} ${CONFIG.currency[lang]}\n`});
-  msg += `${T[lang].total}: ${total()} ${CONFIG.currency[lang]}`;
+  var msg = T[lang].hello + "\n";
+  CONFIG.products.forEach(function(x){
+    if(cart[x.id]){msg += "- " + x.n[lang] + " x" + cart[x.id] + " = " + (x.p*cart[x.id]) + " " + CONFIG.cur[lang] + "\n"}
+  });
+  msg += T[lang].total + ": " + total() + " " + CONFIG.cur[lang];
   window.open("https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(msg), "_blank");
 }
 
-document.getElementById("langBtn").onclick = ()=>{lang = lang==="ar" ? "en" : "ar"; render()};
-document.getElementById("openCart").onclick = showCart;
-document.querySelectorAll(".modal").forEach(m=>m.addEventListener("click",e=>{if(e.target===m) closeAll()}));
+document.getElementById("lang").onclick = function(){lang = (lang=="ar") ? "en" : "ar"; render()};
+document.getElementById("cartBtn").onclick = showCart;
 render();
 </script>
 </body>
