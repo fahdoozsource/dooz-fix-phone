@@ -1,31 +1,45 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Shop</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:Tahoma,Arial,sans-serif}
-body{background:#f4f4f4;color:#222;padding-bottom:80px}
-header{background:#e63946;color:#fff;padding:14px;display:flex;justify-content:space-between;align-items:center}
-header button{background:#fff;color:#e63946;border:0;padding:6px 12px;border-radius:8px}
-#grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:10px}
-.card{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 4px #0002}
-.price{color:#e63946;font-weight:bold;margin:6px 0}
-.btn{background:#e63946;color:#fff;border:0;padding:10px;border-radius:8px;width:100%;font-size:15px;margin-top:6px}
-.gray{background:#777}
-#cartbar{position:fixed;bottom:0;left:0;right:0;background:#fff;padding:10px;box-shadow:0 -2px 6px #0003}
-#modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000a;align-items:center;justify-content:center}
-#box{background:#fff;border-radius:12px;padding:16px;width:90%;max-width:420px;max-height:85vh;overflow:auto}
-.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
-.row button{width:30px;height:30px;border-radius:50%;border:0;background:#eee;font-size:16px}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>متجرنا</title>
+    <style>
+        * {box-sizing: border-box; margin: 0; padding: 0; font-family: Tahoma, Arial, sans-serif;}
+        body {background: #f4f4f4; color: #222; padding-bottom: 80px;}
+        header {background: #e63946; color: #fff; padding: 14px; display: flex; justify-content: space-between; align-items: center;}
+        header button {background: #fff; color: #e63946; border: 0; padding: 6px 12px; border-radius: 5px; font-weight: bold; cursor: pointer;}
+        #category-bar {display: flex; gap: 10px; padding: 10px; background: #fff; overflow-x: auto; position: sticky; top: 0; z-index: 10;}
+        .cat-btn {padding: 8px 16px; border: 1px solid #ccc; border-radius: 20px; background: #f9f9f9; cursor: pointer; white-space: nowrap;}
+        .cat-btn.active {background: #e63946; color: #fff; border-color: #e63946;}
+        #grid {display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px;}
+        .card {background: #fff; border-radius: 10px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; justify-content: space-between;}
+        .price {color: #e63946; font-weight: bold; margin: 6px 0;}
+        .btn {background: #e63946; color: #fff; border: 0; padding: 10px; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold;}
+        .btn.gray {background: #777;}
+        #cartbar {position: fixed; bottom: 0; left: 0; right: 0; background: #e63946; color: #fff; text-align: center; padding: 15px; font-weight: bold; cursor: pointer;}
+        #modal {display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;}
+        #box {background: #fff; color: #333; border-radius: 12px; padding: 20px; width: 90%; max-width: 400px; max-height: 80vh; overflow-y: auto;}
+        .row {display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;}
+        .row button {width: 30px; height: 30px; border-radius: 50%; border: 0; background: #eee; font-weight: bold; cursor: pointer;}
+    </style>
 </head>
 <body>
-<header><b id="name"></b><button id="lang">English</button></header>
+
+<header>
+    <b id="name">متجرنا</b>
+    <button id="langBtn" onclick="toggleLang()">English</button>
+</header>
+
+<div id="category-bar"></div>
+
 <div id="grid"></div>
-<div id="cartbar"><button class="btn" id="cartBtn"></button></div>
-<div id="modal"><div id="box"></div></div>
+
+<div id="cartbar" onclick="showCart()">السلة (0) - 0 ج.م</div>
+
+<div id="modal" onclick="closeM()">
+    <div id="box" onclick="event.stopPropagation()"></div>
+</div>
 
 <script>
 const CONFIG = {
@@ -49,64 +63,143 @@ const CONFIG = {
   ]
 };
 
-var T = {
-  ar:{cart:"السلة", add:"أضف للسلة", send:"إرسال الطلب على واتساب", total:"الإجمالي", empty:"السلة فاضية", close:"إغلاق", hello:"مرحبًا، أريد طلب:", other:"English"},
-  en:{cart:"Cart", add:"Add to cart", send:"Send order on WhatsApp", total:"Total", empty:"Your cart is empty", close:"Close", hello:"Hello, I would like to order:", other:"العربية"}
+const T = {
+  ar: { cart: "السلة", add: "أضف للسلة", send: "إرسال الطلب على واتساب", empty: "السلة فارغة", total: "الإجمالي", close: "إغلاق" },
+  en: { cart: "Cart", add: "Add to cart", send: "Send order on WhatsApp", empty: "Cart is empty", total: "Total", close: "Close" }
 };
-var lang = "ar";
-var cart = {};
 
-function count(){var c=0;for(var k in cart){c+=cart[k]}return c}
-function total(){var t=0;CONFIG.products.forEach(function(x){t+=(cart[x.id]||0)*x.p});return t}
+let lang = "ar";
+let cart = {};
+let currentCategory = "all";
 
-function render(){
-  document.documentElement.lang = lang;
-  document.documentElement.dir = lang=="ar" ? "rtl" : "ltr";
-  document.getElementById("name").textContent = CONFIG.name[lang];
-  document.getElementById("lang").textContent = T[lang].other;
-  document.getElementById("cartBtn").textContent = T[lang].cart + " (" + count() + ") - " + total() + " " + CONFIG.cur[lang];
-  var h = "";
-  CONFIG.products.forEach(function(x){
-    h += '<div class="card"><b>' + x.n[lang] + '</b><div>' + x.d[lang] + '</div><div class="price">' + x.p + ' ' + CONFIG.cur[lang] + '</div><button class="btn" onclick="add(' + x.id + ')">' + T[lang].add + '</button></div>';
-  });
-  document.getElementById("grid").innerHTML = h;
+function toggleLang() {
+  lang = (lang === "ar") ? "en" : "ar";
+  render();
 }
 
-function add(id){cart[id]=(cart[id]||0)+1; render()}
-function chg(id,d){cart[id]=(cart[id]||0)+d; if(cart[id]<=0){delete cart[id]} render(); showCart()}
-function closeM(){document.getElementById("modal").style.display="none"}
+function count() {
+  let c = 0;
+  for (let k in cart) c += cart[k];
+  return c;
+}
 
-function showCart(){
-  var h = "<h3>" + T[lang].cart + "</h3>";
-  var any = false;
-  CONFIG.products.forEach(function(x){
-    if(cart[x.id]){
+function total() {
+  let t = 0;
+  CONFIG.products.forEach(x => {
+    if (cart[x.id]) t += x.p * cart[x.id];
+  });
+  return t;
+}
+
+function renderCategories() {
+  const bar = document.getElementById("category-bar");
+  bar.innerHTML = "";
+  CONFIG.categories.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = `cat-btn ${currentCategory === cat.id ? "active" : ""}`;
+    btn.textContent = cat.name[lang];
+    btn.onclick = () => {
+      currentCategory = cat.id;
+      renderCategories();
+      renderProducts();
+    };
+    bar.appendChild(btn);
+  });
+}
+
+function renderProducts() {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  const filtered = currentCategory === "all" 
+    ? CONFIG.products 
+    : CONFIG.products.filter(p => p.category === currentCategory);
+    
+  filtered.forEach(x => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <b>${x.n[lang]}</b>
+      <div class="price">${x.p} ${CONFIG.cur[lang]}</div>
+      <button class="btn" onclick="add(${x.id})">${T[lang].add}</button>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function render() {
+  document.documentElement.lang = lang;
+  document.documentElement.dir = (lang === "ar") ? "rtl" : "ltr";
+  document.getElementById("name").textContent = CONFIG.name[lang];
+  document.getElementById("langBtn").textContent = (lang === "ar") ? "English" : "عربي";
+  
+  const cb = document.getElementById("cartbar");
+  cb.textContent = `${T[lang].cart} (${count()}) - ${total()} ${CONFIG.cur[lang]}`;
+  
+  renderCategories();
+  renderProducts();
+}
+
+function add(id) {
+  cart[id] = (cart[id] || 0) + 1;
+  render();
+}
+
+function chg(id, d) {
+  cart[id] = (cart[id] || 0) + d;
+  if (cart[id] <= 0) delete cart[id];
+  render();
+  showCart();
+}
+
+function closeM() {
+  document.getElementById("modal").style.display = "none";
+}
+
+function showCart() {
+  const box = document.getElementById("box");
+  let h = `<h3>${T[lang].cart}</h3><br>`;
+  let any = false;
+  
+  CONFIG.products.forEach(x => {
+    if (cart[x.id]) {
       any = true;
-      h += '<div class="row"><span>' + x.n[lang] + '<br><small>' + x.p + ' ' + CONFIG.cur[lang] + '</small></span><span><button onclick="chg(' + x.id + ',-1)">-</button> ' + cart[x.id] + ' <button onclick="chg(' + x.id + ',1)">+</button></span></div>';
+      h += `
+        <div class="row">
+          <span>${x.n[lang]} (${cart[x.id]})</span>
+          <div>
+            <button onclick="chg(${x.id}, -1)">-</button>
+            <button onclick="chg(${x.id}, 1)">+</button>
+          </div>
+        </div>
+      `;
     }
   });
-  if(!any){h += "<p style='padding:14px 0'>" + T[lang].empty + "</p>"}
-  else{
-    h += "<p style='margin-top:10px'><b>" + T[lang].total + ": " + total() + " " + CONFIG.cur[lang] + "</b></p>";
-    h += '<button class="btn" onclick="sendOrder()">' + T[lang].send + '</button>';
+
+  if (!any) {
+    h += `<p>${T[lang].empty}</p>`;
+  } else {
+    h += `<hr><p style="margin:10px 0;"><b>${T[lang].total}:</b> ${total()} ${CONFIG.cur[lang]}</p>`;
+    h += `<button class="btn" onclick="sendOrder()">${T[lang].send}</button>`;
   }
-  h += '<button class="btn gray" onclick="closeM()">' + T[lang].close + '</button>';
-  document.getElementById("box").innerHTML = h;
+  
+  h += `<br><button class="btn gray" onclick="closeM()">${T[lang].close}</button>`;
+  box.innerHTML = h;
   document.getElementById("modal").style.display = "flex";
 }
 
-function sendOrder(){
-  var msg = T[lang].hello + "\n";
-  CONFIG.products.forEach(function(x){
-    if(cart[x.id]){msg += "- " + x.n[lang] + " x" + cart[x.id] + " = " + (x.p*cart[x.id]) + " " + CONFIG.cur[lang] + "\n"}
+function sendOrder() {
+  let msg = "مرحبا، أريد طلب:\n";
+  CONFIG.products.forEach(x => {
+    if (cart[x.id]) {
+      msg += `- ${x.n.ar} × ${cart[x.id]} = ${x.p * cart[x.id]} ${CONFIG.cur.ar}\n`;
+    }
   });
-  msg += T[lang].total + ": " + total() + " " + CONFIG.cur[lang];
-  window.open("https://wa.me/" + CONFIG.whatsapp + "?text=" + encodeURIComponent(msg), "_blank");
+  msg += `الإجمالي: ${total()} ${CONFIG.cur.ar}`;
+  window.open(`https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-document.getElementById("lang").onclick = function(){lang = (lang=="ar") ? "en" : "ar"; render()};
-document.getElementById("cartBtn").onclick = showCart;
 render();
 </script>
+
 </body>
 </html>
