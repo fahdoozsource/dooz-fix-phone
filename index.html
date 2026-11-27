@@ -83,10 +83,16 @@
   #modelCard .info span { color: var(--muted); font-size: 13px; }
 
   #chat { display: none; }
+  .chat-top { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+  .copy-btn {
+    width: auto; margin: 0; padding: 7px 14px; font-size: 13px;
+    background: rgba(120,150,255,.16); color: var(--text); border-radius: 10px;
+  }
   #log { height: 52vh; overflow-y: auto; padding: 8px 2px; scroll-behavior: smooth; }
   .msg { max-width: 86%; padding: 11px 15px; border-radius: 16px; margin: 9px 0; line-height: 1.9; white-space: pre-wrap; word-wrap: break-word; }
   .bot { background: rgba(8,12,30,.85); border: 1px solid var(--line); margin-left: auto; border-top-right-radius: 4px; }
   .me { background: linear-gradient(135deg, var(--cyan), var(--violet)); color: #06101f; margin-right: auto; border-top-left-radius: 4px; font-weight: 600; }
+  .err-msg { border-color: rgba(239,68,68,.55); color: #fca5a5; }
   .msg img { max-width: 100%; border-radius: 10px; display: block; margin-bottom: 6px; }
 
   .thinking { display: flex; align-items: center; gap: 12px; color: var(--muted); }
@@ -158,20 +164,23 @@
   </div>
 
   <div id="chat">
+    <div class="chat-top">
+      <button id="copyLast" class="copy-btn" type="button">نسخ آخر رد</button>
+    </div>
     <div id="log"></div>
     <div id="counter"></div>
     <div id="composer">
-      <div id="preview"><img id="previewImg" alt=""><button id="removeImg">إلغاء الصورة</button></div>
+      <div id="preview"><img id="previewImg" alt=""><button id="removeImg" type="button">إلغاء الصورة</button></div>
       <textarea id="text" placeholder="اكتب ردك هنا..."></textarea>
       <div id="tools">
-        <button id="camBtn" title="ارفع صورة">📷</button>
-        <button id="send">إرسال</button>
+        <button id="camBtn" type="button" title="ارفع صورة">📷</button>
+        <button id="send" type="button">إرسال</button>
       </div>
     </div>
     <div id="ended">
       <h3>خلصت المحادثة</h3>
       <p>لو لسه محتاج مساعدة، ابدأ مشكلة جديدة أو زور الورشة.</p>
-      <button id="restart">ابدأ من جديد</button>
+      <button id="restart" type="button">ابدأ من جديد</button>
     </div>
     <input id="file" type="file" accept="image/*" style="display:none">
   </div>
@@ -196,6 +205,7 @@
   const composerEl = document.getElementById('composer');
   const endedEl = document.getElementById('ended');
   const restartBtn = document.getElementById('restart');
+  const copyLastBtn = document.getElementById('copyLast');
   const phoneArt = document.getElementById('phoneArt');
   const modelName = document.getElementById('modelName');
   const brandName = document.getElementById('brandName');
@@ -225,12 +235,18 @@
   Object.keys(PHONES).forEach(b => brandEl.add(new Option(b, b)));
   FAULTS.forEach(f => faultEl.add(new Option(f, f)));
 
+  function isSafeHex(v) {
+    return typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v);
+  }
+
   function phoneSVG(c1, c2, side) {
+    const safe1 = isSafeHex(c1) ? c1 : '#475569';
+    const safe2 = isSafeHex(c2) ? c2 : '#94a3b8';
     const id = side + Math.random().toString(36).slice(2, 7);
     if (side === 'front') {
-      return '<svg viewBox="0 0 70 130" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c1 + '"/><stop offset="1" stop-color="' + c2 + '"/></linearGradient></defs><rect x="3" y="3" width="64" height="124" rx="12" fill="#0b1020" stroke="#aab4d6" stroke-width="2"/><rect x="8" y="10" width="54" height="110" rx="7" fill="url(#' + id + ')"/><circle cx="35" cy="16" r="2.5" fill="#0b1020"/></svg>';
+      return '<svg viewBox="0 0 70 130" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + safe1 + '"/><stop offset="1" stop-color="' + safe2 + '"/></linearGradient></defs><rect x="3" y="3" width="64" height="124" rx="12" fill="#0b1020" stroke="#aab4d6" stroke-width="2"/><rect x="8" y="10" width="54" height="110" rx="7" fill="url(#' + id + ')"/><circle cx="35" cy="16" r="2.5" fill="#0b1020"/></svg>';
     }
-    return '<svg viewBox="0 0 70 130" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="' + id + '" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c1 + '"/><stop offset="1" stop-color="' + c2 + '"/></linearGradient></defs><rect x="3" y="3" width="64" height="124" rx="12" fill="url(#' + id + ')" stroke="#aab4d6" stroke-width="2"/><rect x="10" y="10" width="28" height="34" rx="9" fill="#0b1020" opacity=".85"/><circle cx="20" cy="20" r="5" fill="#334155" stroke="#cbd5e1"/><circle cx="20" cy="34" r="5" fill="#334155" stroke="#cbd5e1"/><circle cx="31" cy="27" r="3" fill="#fde68a"/></svg>';
+    return '<svg viewBox="0 0 70 130" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="' + id + '" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + safe1 + '"/><stop offset="1" stop-color="' + safe2 + '"/></linearGradient></defs><rect x="3" y="3" width="64" height="124" rx="12" fill="url(#' + id + ')" stroke="#aab4d6" stroke-width="2"/><rect x="10" y="10" width="28" height="34" rx="9" fill="#0b1020" opacity=".85"/><circle cx="20" cy="20" r="5" fill="#334155" stroke="#cbd5e1"/><circle cx="20" cy="34" r="5" fill="#334155" stroke="#cbd5e1"/><circle cx="31" cy="27" r="3" fill="#fde68a"/></svg>';
   }
 
   function updateCard() {
@@ -242,7 +258,7 @@
 
   function loadModels() {
     modelEl.innerHTML = '';
-    PHONES[brandEl.value].forEach(m => modelEl.add(new Option(m, m)));
+    (PHONES[brandEl.value] || []).forEach(m => modelEl.add(new Option(m, m)));
     updateCard();
   }
   brandEl.addEventListener('change', loadModels);
@@ -254,10 +270,18 @@
   let pendingImage = null;
   let followups = 0;
   let thinkingEl = null;
+  let lastBotReply = '';
 
-  function addMsg(text, who, imgSrc) {
+  function setBusy(busy) {
+    sendBtn.disabled = busy;
+    textEl.disabled = busy;
+    camBtn.disabled = busy;
+    removeImg.disabled = busy;
+  }
+
+  function addMsg(text, who, imgSrc, isError) {
     const d = document.createElement('div');
-    d.className = 'msg ' + who;
+    d.className = 'msg ' + who + (isError ? ' err-msg' : '');
     if (imgSrc) {
       const im = document.createElement('img');
       im.src = imgSrc;
@@ -283,7 +307,7 @@
   function updateCounter() {
     if (followups === 0) { counterEl.style.display = 'none'; return; }
     counterEl.style.display = 'block';
-    counterEl.textContent = 'باقي لك ' + (MAX_FOLLOWUPS - followups) + ' رسائل';
+    counterEl.textContent = 'باقي لك ' + Math.max(0, MAX_FOLLOWUPS - followups) + ' رسائل';
   }
 
   function endChat() {
@@ -328,7 +352,7 @@
       previewImg.src = pendingImage.url;
       previewBox.style.display = 'flex';
     } catch (e) {
-      addMsg('معرفتش أقرأ الصورة، جرب صورة تانية.', 'bot');
+      addMsg('معرفتش أقرأ الصورة، جرب صورة تانية.', 'bot', null, true);
     }
     fileEl.value = '';
   });
@@ -338,7 +362,7 @@
   });
 
   async function ask() {
-    sendBtn.disabled = true;
+    setBusy(true);
     showThinking();
     try {
       const res = await fetch('/.netlify/functions/diagnose', {
@@ -348,29 +372,48 @@
       });
       const data = await res.json();
       hideThinking();
-      if (data.ended) { endChat(); sendBtn.disabled = false; return; }
-      const answer = data.answer || data.error || 'حصل خطأ';
+
+      if (!res.ok || data.error) {
+        addMsg(data.error || 'حصل خطأ في السيرفر، جرب تاني.', 'bot', null, true);
+        setBusy(false);
+        return;
+      }
+
+      if (data.ended) {
+        if (data.answer) {
+          lastBotReply = data.answer;
+          addMsg(data.answer, 'bot');
+        }
+        endChat();
+        setBusy(false);
+        return;
+      }
+
+      const answer = data.answer || 'معنديش إجابة دلوقتي، جرب تاني.';
+      lastBotReply = answer;
       messages.push({ role: 'model', text: answer });
       addMsg(answer, 'bot');
-      if (followups >= MAX_FOLLOWUPS) endChat();
+      if (followups >= MAX_FOLLOWUPS) {
+        endChat();
+      }
     } catch (e) {
       hideThinking();
-      addMsg('حصل خطأ في الاتصال. تأكد من النت وحاول تاني.', 'bot');
+      addMsg('حصل خطأ في الاتصال. تأكد من النت وحاول تاني.', 'bot', null, true);
     }
-    sendBtn.disabled = false;
+    setBusy(false);
   }
 
   startBtn.addEventListener('click', () => {
     info = {
       brand: brandEl.value,
       model: modelEl.value,
-      os: document.getElementById('os').value,
+      os: document.getElementById('os').value.trim(),
       fault: faultEl.value,
-      desc: document.getElementById('desc').value
+      desc: document.getElementById('desc').value.trim()
     };
     document.getElementById('setup').style.display = 'none';
     document.getElementById('chat').style.display = 'block';
-    const first = 'السلام عليكم، معايا ' + info.brand + ' ' + info.model + ' و' + info.fault + '. ' + info.desc;
+    const first = 'السلام عليكم، معايا ' + info.brand + ' ' + info.model + ' و' + info.fault + (info.desc ? '. ' + info.desc : '');
     messages.push({ role: 'user', text: first });
     addMsg(first, 'me');
     ask();
@@ -394,11 +437,23 @@
     updateCounter();
     ask();
   }
+
   sendBtn.addEventListener('click', send);
   textEl.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 700) { e.preventDefault(); send(); }
   });
+
+  copyLastBtn.addEventListener('click', async () => {
+    if (!lastBotReply) return;
+    try {
+      await navigator.clipboard.writeText(lastBotReply);
+      const old = copyLastBtn.textContent;
+      copyLastBtn.textContent = 'تم النسخ ✓';
+      setTimeout(() => { copyLastBtn.textContent = old; }, 1500);
+    } catch (_) {}
+  });
+
   restartBtn.addEventListener('click', () => location.reload());
 </script>
 </body>
-</html>
+      </html>
