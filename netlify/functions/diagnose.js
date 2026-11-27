@@ -1,4 +1,4 @@
-const MODELS = ['gemini-1.5-flash'];
+const MODELS = ['gemini-2.5-flash'];
 const MAX_USER_MESSAGES = 11;
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
