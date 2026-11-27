@@ -1,4 +1,6 @@
-const PHONES = {
+const OTHER_MODEL_LABEL = "موديل آخر (اكتبه في وصف المشكلة)";
+
+const RAW_PHONES = {
   "Samsung": ["Galaxy S26 Ultra","Galaxy S25 Ultra","Galaxy S25+","Galaxy S25","Galaxy S24 Ultra","Galaxy S24+","Galaxy S24","Galaxy S23 Ultra","Galaxy S23","Galaxy S22 Ultra","Galaxy S21","Galaxy Z Fold 7","Galaxy Z Flip 7","Galaxy Z Fold 6","Galaxy Z Flip 6","Galaxy A56","Galaxy A55","Galaxy A36","Galaxy A35","Galaxy A26","Galaxy A25","Galaxy A16","Galaxy A15","Galaxy A06","Galaxy A05","Galaxy M35","Galaxy M15","Galaxy Note 20 Ultra","Galaxy Note 10"],
   "Apple iPhone": ["iPhone 17 Pro Max","iPhone 17 Pro","iPhone 17","iPhone Air","iPhone 16 Pro Max","iPhone 16 Pro","iPhone 16 Plus","iPhone 16","iPhone 16e","iPhone 15 Pro Max","iPhone 15 Pro","iPhone 15 Plus","iPhone 15","iPhone 14 Pro Max","iPhone 14 Pro","iPhone 14","iPhone 13 Pro Max","iPhone 13","iPhone 12","iPhone 11","iPhone XR","iPhone XS Max","iPhone X","iPhone 8 Plus","iPhone 7"],
   "Xiaomi": ["Xiaomi 15T Pro","Xiaomi 15","Xiaomi 14T Pro","Xiaomi 14T","Xiaomi 14","Xiaomi 13T","Xiaomi 13","Redmi Note 15 Pro","Redmi Note 14 Pro+","Redmi Note 14 Pro","Redmi Note 14","Redmi Note 13 Pro+","Redmi Note 13 Pro","Redmi Note 13","Redmi Note 12","Redmi 14C","Redmi 13C","Redmi 13","Redmi 12","Redmi A5","Redmi A3","Poco X7 Pro","Poco X7","Poco F7","Poco F6","Poco M7","Poco C75"],
@@ -16,18 +18,23 @@ const PHONES = {
   "Sony": ["Xperia 1 VI","Xperia 1 V","Xperia 5 V","Xperia 10 V"],
   "ZTE / Nubia": ["Nubia Red Magic 10 Pro","Nubia Red Magic 9 Pro","ZTE Blade A75","ZTE Blade V50"],
   "Lenovo": ["Legion Y70","Tab M10"],
-  "Itel": ["Itel A80","Itel A70","Itel P55","Itel S24"],
-  "Other": ["موديل آخر (اكتبه في وصف المشكلة)"]
+  "Itel": ["Itel A80","Itel A70","Itel P55","Itel S24"]
 };
+
+const PHONES = Object.fromEntries(
+  Object.entries(RAW_PHONES).map(([brand, models]) => [brand, [...models, OTHER_MODEL_LABEL]])
+);
+PHONES["Other"] = [OTHER_MODEL_LABEL];
 
 const FAULTS = [
   "عيب في التاتش (اللمس)",
-  "عيب في الشاشة",
-  "عيب في البطارية",
+  "عيب في الشاشة (كسر أو خطوط أو بقع)",
+  "عيب في البطارية أو تسريب شحن",
   "عيب في الشحن (الشاحن أو المنفذ)",
   "عيب في البوردة (اللوحة الأم)",
   "عيب في الأزرار (الباور / الصوت)",
-  "عيب في سيستم الجهاز",
+  "عيب في حساس المكالمات (التقارب)",
+  "عيب في سيستم الجهاز أو التحديث",
   "ميزة أو إعداد لا أعرف كيف أشغله",
   "عيب في الصوت أو السماعة",
   "عيب في المايك",
