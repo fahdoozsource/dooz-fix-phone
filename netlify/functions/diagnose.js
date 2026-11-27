@@ -1,30 +1,16 @@
-const MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
+const MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.7-flash'];
 const MAX_USER_MESSAGES = 11; // الرسالة الأولى + 10 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
 
 function sanitizeBase64(data) {
   if (typeof data !== 'string') return '';
-  const trimmed = data.trim();
-  if (!trimmed) return '';
-  const cleaned = trimmed.includes(',') ? trimmed.split(',')[1] : trimmed;
-  return cleaned.replace(/\s+/g, '');
-}
-
-function getSafeMimeType(mimeType) {
-  if (typeof mimeType !== 'string') return 'image/jpeg';
-  const normalized = mimeType.trim().toLowerCase();
-  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  return allowed.includes(normalized)
-    ? normalized === 'image/jpg'
-      ? 'image/jpeg'
-      : normalized
-    : 'image/jpeg';
+  const cleaned = data.includes(',') ? data.split(',')[1] : data;
+  return cleaned.trim();
 }
 
 async function callGemini(KEY, body) {
-  let lastError = 'حصلت مشكلة مؤقتة في الاتصال، جرب تاني بعد شوية.';
-
+  let lastError = 'خطأ غير معروف';
   for (const model of MODELS) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -51,45 +37,37 @@ async function callGemini(KEY, body) {
           return { ok: true, json };
         }
 
-        const apiMessage =
-          json && json.error && typeof json.error.message === 'string'
-            ? json.error.message
-            : 'خطأ من خدمة الذكاء الاصطناعي';
+        lastError =
+          '[' +
+          model +
+          ' / ' +
+          res.status +
+          '] ' +
+          ((json && json.error && json.error.message) || 'خطأ من جيميناي');
 
-        lastError = '[' + model + ' / ' + res.status + '] ' + apiMessage;
-
-        // لو النموذج غير متاح في المسار الحالي ننتقل للنموذج اللي بعده فوراً
         if (res.status === 404) {
           break;
         }
 
-        // إعادة المحاولة فقط في حالة الضغط أو الأعطال المؤقتة
-        const isTemporary = res.status >= 500 || res.status === 429;
-        if (!isTemporary) {
+        const temporary = res.status >= 500 || res.status === 429;
+        if (!temporary) {
           return { ok: false, error: lastError };
         }
-      } catch (_) {
-        lastError = 'تعذر الاتصال بالخدمة، تأكد من اتصالك بالإنترنت وجرب تاني.';
+      } catch (e) {
+        lastError = 'تعذر الاتصال بجيميناي';
       }
 
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
-      }
+      await new Promise((r) => setTimeout(r, 600 * attempt));
     }
   }
-
   return { ok: false, error: lastError };
 }
 
 exports.handler = async (event) => {
-  const headers = {
-    'Content-Type': 'application/json; charset=utf-8'
-  };
-
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
@@ -98,58 +76,49 @@ exports.handler = async (event) => {
   if (!KEY) {
     return {
       statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'مفتاح GEMINI_API_KEY غير مضبوط في إعدادات البيئة على Netlify.'
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'مفتاح جيميناي غير مضاف في إعدادات نيتلفاي' })
     };
   }
 
   let data;
   try {
     data = JSON.parse(event.body || '{}');
-  } catch (_) {
+  } catch (e) {
     return {
       statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: 'صيغة البيانات المرسلة غير صحيحة.' })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'بيانات غير صحيحة' })
     };
   }
 
-  const brand = String(data.brand || 'غير محدد').slice(0, 80).trim() || 'غير محدد';
-  const modelName = String(data.model || 'غير محدد').slice(0, 100).trim() || 'غير محدد';
-  const os = String(data.os || 'غير محدد').slice(0, 80).trim() || 'غير محدد';
-  const fault = String(data.fault || 'غير محدد').slice(0, 120).trim() || 'غير محدد';
+  const brand = String(data.brand || 'غير محدد').slice(0, 80);
+  const modelName = String(data.model || 'غير محدد').slice(0, 100);
+  const os = String(data.os || 'غير محدد').slice(0, 80);
+  const fault = String(data.fault || 'غير محدد').slice(0, 120);
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
 
-  const userMessages = rawMessages.filter((m) => m && typeof m === 'object' && m.role === 'user');
+  const userMessages = rawMessages.filter((m) => m && m.role === 'user');
   const userCount = userMessages.length;
 
   if (userCount > MAX_USER_MESSAGES) {
     return {
       statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        answer: 'خلصت المحادثة في الجلسة دي، تقدر تبدأ تشخيص جديد لأي مشكلة تانية.',
-        ended: true
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answer: 'خلصت المحادثة.', ended: true })
     };
   }
 
   let imageCount = 0;
   for (const m of userMessages) {
-    if (m.media && sanitizeBase64(m.media.data)) {
-      imageCount++;
-    }
+    if (m.media && m.media.data) imageCount++;
   }
-
   if (imageCount > MAX_IMAGES_PER_SESSION) {
     return {
       statusCode: 200,
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        answer:
-          'وصلت للحد الأقصى لعدد الصور المسموح بيها في الجلسة دي، كمل وصفك بالكلام أو ابدأ تشخيص جديد.',
+        answer: 'وصلت للحد الأقصى للصور في الجلسة دي، كمل وصفك بالكلام أو ابدأ تشخيص جديد.',
         ended: false
       })
     };
@@ -190,44 +159,36 @@ exports.handler = async (event) => {
 - متقولش إنك ذكاء اصطناعي ومتكررش كلام قلته قبل كده.
 `.trim();
 
-  const history = rawMessages
-    .filter((m) => m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant' || m.role === 'model'))
-    .map((m) => {
-      const parts = [];
-      const text = typeof m.text === 'string' ? m.text.slice(0, MAX_TEXT_LENGTH).trim() : '';
+  const history = rawMessages.map((m) => {
+    const parts = [];
+    const text = typeof m.text === 'string' ? m.text.slice(0, MAX_TEXT_LENGTH).trim() : '';
+    if (text) {
+      parts.push({ text });
+    }
 
-      if (text) {
-        parts.push({ text });
-      }
-
-      if (m.role === 'user' && m.media && typeof m.media === 'object') {
-        const base64Data = sanitizeBase64(m.media.data);
-        if (base64Data) {
-          parts.push({
-            inlineData: {
-              mimeType: getSafeMimeType(m.media.mimeType),
-              data: base64Data
-            }
-          });
+    const base64Data = m.media && m.media.data ? sanitizeBase64(m.media.data) : '';
+    if (base64Data) {
+      const mimeType =
+        m.media && typeof m.media.mimeType === 'string' && m.media.mimeType.startsWith('image/')
+          ? m.media.mimeType
+          : 'image/jpeg';
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: base64Data
         }
-      }
+      });
+    }
 
-      if (parts.length === 0) {
-        parts.push({ text: 'متابعة' });
-      }
+    if (parts.length === 0) {
+      parts.push({ text: ' ' });
+    }
 
-      return {
-        role: m.role === 'user' ? 'user' : 'model',
-        parts
-      };
-    });
-
-  if (history.length === 0) {
-    history.push({
-      role: 'user',
-      parts: [{ text: `مشكلة في جهاز ${brand} ${modelName} بخصوص: ${fault}` }]
-    });
-  }
+    return {
+      role: m.role === 'user' ? 'user' : 'model',
+      parts
+    };
+  });
 
   const result = await callGemini(KEY, {
     systemInstruction: { parts: [{ text: system }] },
@@ -237,7 +198,7 @@ exports.handler = async (event) => {
   if (!result.ok) {
     return {
       statusCode: 500,
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: result.error })
     };
   }
@@ -255,7 +216,7 @@ exports.handler = async (event) => {
 
   return {
     statusCode: 200,
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answer, ended })
   };
 };
