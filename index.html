@@ -121,6 +121,7 @@
 
   /* تنسيق نافذة البلاغ */
   #reportModal { display: none; position: fixed; inset: 0; background: rgba(8,12,30,0.85); backdrop-filter: blur(5px); z-index: 100; padding: 20px; align-items: center; justify-content: center; overflow-y: auto; }
+  #reportModal.open { display: flex; }
   #reportModal .box { width: 100%; max-width: 500px; }
 
   @media (max-width: 560px) {
@@ -199,10 +200,10 @@
     <form id="reportForm" action="https://formspree.io/f/xkjreeob" method="POST">
       <label for="reportText">تفاصيل المشكلة أو الخطأ:</label>
       <textarea id="reportText" name="message" required placeholder="اكتب إيه اللي حصل معاك بالظبط..."></textarea>
-      
+
       <!-- حقول مخفية لمعرفة سياق المشكلة -->
       <input type="hidden" name="device_info" id="deviceInfo">
-      
+
       <div style="display: flex; gap: 10px; margin-top: 15px;">
         <button type="submit" style="flex: 1; background: linear-gradient(90deg, var(--cyan), var(--violet));">إرسال البلاغ</button>
         <button type="button" id="closeReport" style="flex: 1; background: #475569; color: white;">إلغاء</button>
@@ -281,8 +282,7 @@
     }
     return '<svg viewBox="0 0 70 130" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="' + id + '" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + safe1 + '"/><stop offset="1" stop-color="' + safe2 + '"/></linearGradient></defs><rect x="3" y="3" width="64" height="124" rx="12" fill="url(#' + id + ')" stroke="#aab4d6" stroke-width="2"/><rect x="10" y="10" width="28" height="34" rx="9" fill="#0b1020" opacity=".85"/><circle cx="20" cy="20" r="5" fill="#334155" stroke="#cbd5e1"/><circle cx="20" cy="34" r="5" fill="#334155" stroke="#cbd5e1"/><circle cx="31" cy="27" r="3" fill="#fde68a"/></svg>';
   }
-
-  function updateCard() {
+          function updateCard() {
     const cols = BRAND_COLORS[brandEl.value] || BRAND_COLORS['Other'];
     phoneArt.innerHTML = phoneSVG(cols[0], cols[1], 'front') + phoneSVG(cols[0], cols[1], 'back');
     modelName.textContent = modelEl.value;
@@ -454,4 +454,109 @@
 
   function send() {
     const t = textEl.value.trim();
-    if ((!t && !pendingImage) || sendBtn.disabled || followup
+    if ((!t && !pendingImage) || sendBtn.disabled || followups >= MAX_FOLLOWUPS) return;
+
+    const img = pendingImage;
+    pendingImage = null;
+    previewBox.style.display = 'none';
+    textEl.value = '';
+
+    followups += 1;
+    updateCounter();
+
+    const msgObj = { role: 'user', text: t || 'أرفقت صورة' };
+    if (img) {
+      msgObj.image = { data: img.data, mimeType: img.mimeType };
+    }
+    messages.push(msgObj);
+    addMsg(t, 'me', img ? img.url : null);
+    ask();
+  }
+
+  sendBtn.addEventListener('click', send);
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  copyLastBtn.addEventListener('click', async () => {
+    if (!lastBotReply) return;
+    try {
+      await navigator.clipboard.writeText(lastBotReply);
+      const oldText = copyLastBtn.textContent;
+      copyLastBtn.textContent = 'تم النسخ ✓';
+      setTimeout(() => { copyLastBtn.textContent = oldText; }, 1500);
+    } catch (e) {}
+  });
+
+  restartBtn.addEventListener('click', () => {
+    info = {};
+    messages = [];
+    pendingImage = null;
+    followups = 0;
+    lastBotReply = '';
+    logEl.innerHTML = '';
+    textEl.value = '';
+    previewBox.style.display = 'none';
+    endedEl.style.display = 'none';
+    counterEl.style.display = 'none';
+    composerEl.style.display = 'block';
+    document.getElementById('chat').style.display = 'none';
+    document.getElementById('setup').style.display = 'block';
+    setBusy(false);
+  });
+
+  reportBtn.addEventListener('click', () => {
+    const ctx = [
+      info.brand || '',
+      info.model || '',
+      info.os || '',
+      info.fault || '',
+      info.desc || ''
+    ].filter(Boolean).join(' | ');
+    deviceInfoInput.value = ctx;
+    reportModal.classList.add('open');
+  });
+
+  closeReport.addEventListener('click', () => {
+    reportModal.classList.remove('open');
+  });
+
+  reportModal.addEventListener('click', (e) => {
+    if (e.target === reportModal) {
+      reportModal.classList.remove('open');
+    }
+  });
+
+  reportForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = reportForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    const oldLabel = submitBtn.textContent;
+    submitBtn.textContent = 'جاري الإرسال...';
+
+    try {
+      const res = await fetch(reportForm.action, {
+        method: 'POST',
+        body: new FormData(reportForm),
+        headers: { 'Accept': 'application/json' }
+      });
+      if (res.ok) {
+        reportForm.reset();
+        reportModal.classList.remove('open');
+        addMsg('تم إرسال بلاغك بنجاح، شكرًا لمساعدتنا في تحسين الموقع.', 'bot');
+      } else {
+        addMsg('تعذر إرسال البلاغ الآن، حاول مرة أخرى.', 'bot', null, true);
+      }
+    } catch (err) {
+      addMsg('حدث خطأ في الاتصال أثناء إرسال البلاغ.', 'bot', null, true);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = oldLabel;
+    }
+  });
+</script>
+</body>
+</html>
