@@ -42,8 +42,7 @@ exports.handler = async (event) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          tools: [{ google_search: {} }]
+          contents: [{ parts: [{ text: prompt }] }]
         })
       }
     );
