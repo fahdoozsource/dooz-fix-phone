@@ -5,3 +5,6 @@
 [functions]
   [functions."diagnose"]
     timeout = 26
+
+  [functions."feedback"]
+    timeout = 15
