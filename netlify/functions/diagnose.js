@@ -1,7 +1,26 @@
-const MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
-const MAX_USER_MESSAGES = 11; // الرسالة الأولى + 10 رسائل متابعة
+// الموديل الأقوى أولًا، والأخف احتياطي لو الأول فشل
+const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+const PROOF_MODELS = ['gemini-3.5-flash-lite'];
+const MAX_USER_MESSAGES = 6; // الرسالة الأولى + 5 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
+const TOTAL_BUDGET_MS = 24000; // أقل من مهلة الدالة (26 ثانية)
+const TIMEOUT_MSG = 'استغرق الرد وقتًا أطول من المعتاد، حاول مرة أخرى.';
+
+// ===== النصوص الثابتة (عدّلها من هنا) =====
+const WELCOME =
+  'وعليكم السلام ورحمة الله وبركاته، أهلًا بك في موقع ورشة دوز فيكس فون للاستشارة في مشاكل وأعطال الهواتف.';
+const THANKS_REPLY = 'الشكر لله، تحت أمرك.';
+const FAREWELL = 'السلام عليكم ورحمة الله وبركاته.';
+
+// مصطلحات لاتينية قصيرة مسموحة
+const LATIN_OK = new Set([
+  'ios', 'usb', 'sim', 'lcd', 'led', 'ic', 'dfu', 'frp', 'nfc', 'gps', 'otg',
+  'sd', 'gb', 'tb', 'mah', 'ram', 'rom', 'cpu', 'gpu', 'pin', 'ssd', 'pc',
+  'tv', 'id', 'vpn', 'apn', 'ime', 'imei', 'oled', 'wifi', 'wi-fi', 'type-c'
+]);
+
+const PRICE_WORDS = /(سعر|اسعار|أسعار|تكلف|بكام|كام|مصنعي|ثمن)/;
 
 function sanitizeBase64(data) {
   if (typeof data !== 'string') return '';
@@ -9,10 +28,84 @@ function sanitizeBase64(data) {
   return cleaned.trim();
 }
 
-async function callGemini(KEY, body) {
+function respond(statusCode, obj) {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(obj)
+  };
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function timeLeft(startedAt) {
+  return TOTAL_BUDGET_MS - (Date.now() - startedAt);
+}
+
+// ===== هل رسالة العميل شكر فقط؟ =====
+function isThanksOnly(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 60) return false;
+  const norm = t
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[إأآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .toLowerCase();
+  const hasThanks =
+    /(شكرا|متشكر|مشكور|تسلم|يسلمو|جزاك|بارك الله|ربنا يكرمك|الله يكرمك|كتر خيرك|الف شكر|ربنا يبارك|thanks|thank you|thx)/.test(norm);
+  if (!hasThanks) return false;
+  const hasMore = /[؟?]|(لسه|لكن|بس |مشكله|ازاي|ليه|هل |عندي|جربت|تاني|كمان)/.test(norm);
+  const words = norm.split(/\s+/).filter(Boolean);
+  return !hasMore && words.length <= 6;
+}
+
+// ===== كشف حروف لاتينية ملتصقة بالعربي (عطل في توليد النص) =====
+function hasGlitch(text) {
+  return /[\u0600-\u06FF][A-Za-z]|[A-Za-z][\u0600-\u06FF]/.test(text);
+}
+
+// ===== تنظيف الرد =====
+function cleanAnswer(text, brand, modelName, os) {
+  const allowed = new Set(
+    (brand + ' ' + modelName + ' ' + os)
+      .toLowerCase()
+      .split(/[^a-z0-9+\-]+/)
+      .filter(Boolean)
+  );
+
+  let out = String(text || '')
+    .replace(/[*#`]+/g, '')
+    .replace(/^\s*[-•]\s+/gm, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  // حذف أي حروف لاتينية قصيرة غريبة ليست مصطلحًا معروفًا
+  out = out.replace(/[A-Za-z][A-Za-z0-9+\-]*/g, (tok) => {
+    const low = tok.toLowerCase();
+    if (allowed.has(low) || LATIN_OK.has(low) || /\d/.test(tok) || tok.length > 3) return tok;
+    return '';
+  });
+
+  return out.replace(/ {2,}/g, ' ').trim();
+}
+
+// ===== الاتصال بجيميناي =====
+// opts: { models, attempts, timeoutMs, search }
+async function callGemini(KEY, body, startedAt, opts = {}) {
+  const models = opts.models || MODELS;
+  const attempts = opts.attempts || 2;
+  const maxTimeout = opts.timeoutMs || 22000;
   let lastError = 'خطأ غير معروف';
-  for (const model of MODELS) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
+
+  for (const model of models) {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const remaining = timeLeft(startedAt);
+      if (remaining < 4000) return { ok: false, error: TIMEOUT_MSG };
+
       try {
         const url =
           'https://generativelanguage.googleapis.com/v1beta/models/' +
@@ -20,10 +113,13 @@ async function callGemini(KEY, body) {
           ':generateContent?key=' +
           encodeURIComponent(KEY);
 
+        const payload = opts.search ? { ...body, tools: [{ google_search: {} }] } : body;
+
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(Math.min(remaining - 1000, maxTimeout))
         });
 
         let json = {};
@@ -33,64 +129,198 @@ async function callGemini(KEY, body) {
           json = {};
         }
 
-        if (res.ok) {
-          return { ok: true, json };
-        }
+        if (res.ok) return { ok: true, json };
 
         lastError =
-          '[' +
-          model +
-          ' / ' +
-          res.status +
-          '] ' +
+          '[' + model + ' / ' + res.status + '] ' +
           ((json && json.error && json.error.message) || 'خطأ من جيميناي');
 
-        if (res.status === 404 || res.status === 429) {
-          break;
-        }
-
-        const temporary = res.status >= 500;
-        if (!temporary) {
-          return { ok: false, error: lastError };
-        }
+        if (res.status === 404 || res.status === 429) break;
+        if (res.status < 500) return { ok: false, error: lastError };
       } catch (e) {
-        lastError = 'تعذر الاتصال بجيميناي';
+        lastError =
+          e && e.name === 'TimeoutError' ? TIMEOUT_MSG : 'تعذر الاتصال بجيميناي';
       }
 
-      await new Promise((r) => setTimeout(r, 600 * attempt));
+      if (attempt < attempts) await sleep(600 * attempt);
     }
   }
   return { ok: false, error: lastError };
 }
 
+function extractAnswer(json) {
+  const cand = json && json.candidates && json.candidates[0];
+  if (!cand || !cand.content || !Array.isArray(cand.content.parts)) return '';
+  return cand.content.parts
+    .filter((p) => p && !p.thought)
+    .map((p) => (typeof p.text === 'string' ? p.text : ''))
+    .join('')
+    .trim();
+}
+
+// ===== الخطوة 1: بحث سريع عن الأسعار (منفصل عن كتابة الرد) =====
+// السبب: دمج البحث مع كتابة رد عربي طويل في نفس الطلب كان يسبب كلمات مشوهة.
+async function lookupPrices(KEY, startedAt, ctx) {
+  if (timeLeft(startedAt) < 13000) return '';
+
+  const prompt =
+    'ابحث عن الأسعار الحالية في السوق المصرية بالجنيه المصري.\n' +
+    'الجهاز: ' + ctx.brand + ' ' + ctx.modelName + '\n' +
+    'نوع العيب: ' + ctx.fault + '\n' +
+    'كلام العميل: ' + ctx.lastText.slice(0, 300) + '\n\n' +
+    'المطلوب: سطر لسعر قطعة الغيار المحتملة لهذا الموديل (رقم واحد تقريبي لكل جودة إن وجدت: أصلي أو تجاري)، ' +
+    'وسطر لأجر المصنعية المعتاد لهذا العطل. إذا كان العطل يُحل بإعدادات أو سوفت وير فاكتب: مجاني. ' +
+    'اكتب أرقامًا فقط وبحد أقصى 4 أسطر قصيرة بدون شرح. إذا لم تجد سعرًا موثوقًا اكتب: غير متاح.';
+
+  const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }] };
+
+  const r = await callGemini(KEY, body, startedAt, {
+    models: [MODELS[0]],
+    attempts: 1,
+    timeoutMs: 9000,
+    search: true
+  });
+  if (!r.ok) return '';
+
+  const t = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
+  if (!t || /غير متاح/.test(t) && t.length < 20) return '';
+  return t.slice(0, 600);
+}
+
+// ===== الخطوة 3: تدقيق إملائي سريع =====
+const PROOF_PROMPT =
+  'أنت مدقق لغوي للعربية. ستصلك رسالة بالعامية المصرية المبسطة. ' +
+  'صحح فقط الأخطاء الإملائية، والكلمات المشوهة أو الناقصة أو المكررة، وأي حروف لاتينية ملتصقة بكلمات عربية. ' +
+  'لا تغيّر المعنى ولا الأرقام ولا ترتيب الخطوات ولا الأسلوب، ولا تضف شيئًا ولا تحذف جملة. ' +
+  'أعد النص المصحح فقط بدون أي شرح أو علامات تنسيق.';
+
+function numbersOf(t) {
+  return (String(t).match(/\d+/g) || []).join(',');
+}
+
+async function proofread(KEY, text, startedAt) {
+  if (timeLeft(startedAt) < 7000) return text;
+
+  const body = {
+    systemInstruction: { parts: [{ text: PROOF_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text }] }]
+  };
+
+  const r = await callGemini(KEY, body, startedAt, {
+    models: PROOF_MODELS,
+    attempts: 1,
+    timeoutMs: 8000
+  });
+  if (!r.ok) return text;
+
+  const fixed = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
+  if (!fixed) return text;
+
+  // حماية: لو التدقيق غيّر الأرقام أو الطول كثيرًا أو أضاف حروفًا لاتينية ملتصقة، نتجاهله
+  const ratio = fixed.length / text.length;
+  if (ratio < 0.8 || ratio > 1.25) return text;
+  if (numbersOf(fixed) !== numbersOf(text)) return text;
+  if (hasGlitch(fixed)) return text;
+
+  return fixed;
+}
+
+function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, priceNotes }) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const priceSource = priceNotes
+    ? 'هذه نتائج بحث حديثة عن الأسعار، اعتمد عليها كمرجع:\n' + priceNotes + '\nاذكر منها رقمًا واحدًا تقريبيًا لكل بند.'
+    : 'لا تتوفر لديك الآن نتائج بحث عن الأسعار. إذا ذكرت أسعارًا فقل صراحة إنها تقدير تقريبي.';
+
+  return `
+أنت فني صيانة هواتف محمولة مصري خبير، لديك سنوات طويلة من الخبرة العملية في الورشة، وتشخّص الأعطال وتشرح الحلول لعميل يكتب لك عن جهازه.
+
+بيانات الجهاز:
+- الماركة: ${brand}
+- الموديل: ${modelName}
+- إصدار النظام: ${os}
+- نوع العيب: ${fault}
+- تاريخ اليوم: ${today}
+
+أسلوب الكتابة (مهم جدًا):
+- اكتب بعامية مصرية مبسطة وواضحة وقريبة من الفصحى، بجمل قصيرة ومنطقية، وبإملاء عربي سليم 100%.
+- التزم بالهمزات والتاء المربوطة والألف المقصورة والتنوين الصحيحة، مثل: أولًا، ثانيًا، ثالثًا، رابعًا، خامسًا، إذا، إلى، مثلًا، غالبًا، فعلًا، لأن، أيضًا.
+- استخدم كلمات عربية معروفة فقط. لا تخترع كلمات، ولا تكتب كلمات ناقصة أو مشوهة أو مقطوعة أو مكررة.
+- المصطلحات الفنية اكتبها بهذه الصيغ: الشاشة، التاتش، حساس القرب (حساس المكالمات)، اللوحة الأم (البوردة)، منفذ الشحن، الشاحن، البطارية، السماعة، الميكروفون، الكاميرا، الشريحة، الهارد وير، السوفت وير، قطعة الغيار، المصنعية، السيليكون الحراري، الفلاتة.
+- ممنوع تمامًا إدخال أي حروف إنجليزية داخل الكلمات العربية أو ملتصقة بها. الحروف اللاتينية مسموحة فقط لأسماء الأجهزة والأنظمة والمصطلحات المعيارية مثل Android وiOS وUSB وType-C وWi-Fi وSIM وOLED وLCD وIC وIMEI، وتُكتب منفصلة بمسافة عن الكلمات العربية.
+- ممنوع العناوين والرموز والنجوم والجداول والقوائم النقطية. رتّب الخطوات بكلمات مثل: أولًا، ثانيًا، ثالثًا.
+- قبل أن تنهي ردك راجع كل جملة، وتأكد من سلامة الإملاء ومن أن الكلام منطقي ودقيق فنيًا.
+
+أسلوب الرد:
+- لا تبدأ أي رد بترحيب أو مجاملة أو نداء، مثل: أهلًا، يا باشا، يا غالي، بص يا سيدي. ابدأ بالمعلومة أو الحل مباشرة.
+- لا تعِد كلام العميل ولا تلخص سؤاله، وأجب مباشرة.
+- لا تضف عبارات مجاملة في آخر الرد.
+- اعتمد على خبرة عميقة وحلول نهائية قابلة للتنفيذ، وليس على كلام عام.
+
+${
+  isFirstReply
+    ? `
+هذا هو الرد الأول. سيضيف النظام الترحيب تلقائيًا قبل ردك، لذلك لا تكتب أي ترحيب أو سلام، وابدأ مباشرة بالعطل وحله. يجب أن يكون الرد كاملًا ومفصلًا في رسالة واحدة:
+أولًا: اذكر الأسباب المحتملة للمشكلة من الأكثر احتمالًا إلى الأقل.
+ثانيًا: لكل سبب اشرح الحل بالتفصيل وبالترتيب: الدخول على أي إعدادات، والضغط على ماذا، ثم ماذا. وراعِ أن أسماء القوائم تختلف حسب الماركة وإصدار النظام.
+ثالثًا: وضّح ما يُجرَّب بعد ذلك إذا لم ينجح الحل الأول، وما الحل النهائي إذا فشلت كل الحلول.
+رابعًا: وضّح أي حل يصلح في البيت وأي حل يحتاج ورشة، ودرجة خطورة العطل باختصار.
+خامسًا: اذكر التكلفة بالجنيه المصري حسب قواعد الأسعار بالأسفل.
+في آخر الرد اسأل سؤالًا واحدًا فقط يقرّبك من السبب الحقيقي.
+لا تطلب صورة ولا فيديو في الرد الأول.
+`
+    : `
+هذا رد متابعة: لا ترحيب ولا مجاملة، وأجب مباشرة على ما كتبه العميل.
+- اجعل الرد قصيرًا من 3 إلى 6 أسطر.
+- افهم من كلام العميل، ثم أكّد سببًا أو استبعده.
+- اسأل سؤال متابعة واحدًا فقط عند الحاجة، مثل: ماذا جربت؟ متى ظهر العطل؟ هل تظهر رسالة خطأ؟ هل يمكنك تصويره؟
+- عند الوصول إلى تشخيص واضح اذكر السبب المرجح، والحل النهائي بخطواته، وهل يصلح في البيت أم يحتاج ورشة، والتكلفة حسب قواعد الأسعار.
+- لا تكرر حلولًا ذكرتها من قبل.
+`
+}
+
+قواعد الأسعار:
+- ${priceSource}
+- اذكر رقمًا واحدًا تقريبيًا لكل بند بصيغة: سعر القطعة تقريبًا (رقم) جنيه، والمصنعية تقريبًا (رقم) جنيه. ممنوع ذكر نطاق سعري مثل: من 100 إلى 150.
+- الأسعار تختلف من عطل إلى آخر ومن موديل إلى آخر، فلا تكرر نفس الرقم لكل الأعطال.
+- إذا كان السعر يختلف حسب الجودة (أصلي أو تجاري أو بديل) فاذكر رقمًا لكل نوع.
+- العطل الذي يُحل بإعدادات أو سوفت وير داخل الهاتف مجاني، ولا تذكر له سعرًا.
+- لا تخترع سعرًا أبدًا. إذا لم تجد سعرًا موثوقًا فقل بصراحة إن الرقم تقدير تقريبي.
+- نبّه في جملة واحدة قصيرة أن الأسعار تقريبية وقد تختلف قليلًا من ورشة إلى أخرى.
+
+الصور والفيديو:
+- قد يرسل العميل صورة في أي وقت. إذا أرسلها فحللها، وقل أين المشكلة وما سببها وما الحل، واقرأ أي رسالة خطأ أو كود ظاهر فيها.
+- إذا لم تستطع الوصول للمشكلة بالكلام فاطلب منه فيديو قصيرًا أو صورة أوضح.
+- إذا كان العطل واضحًا بالكلام فلا تطلب صورة.
+
+الأعطال الداخلية:
+- إذا كان الحل يحتاج فتح الجهاز أو لحامًا في اللوحة الأم، فاشرح مكان العطل بوضوح، ونبّه أن هذا عمل ورش متخصصة.
+
+قواعد عامة:
+- لا تخترع معلومات. إذا لم تكن متأكدًا فقل ذلك.
+- إذا شكرك العميل فقط فرد بجملة: الشكر لله، تحت أمرك.
+- لا تقل إنك ذكاء اصطناعي.
+`.trim();
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Method not allowed' })
-    };
+    return respond(405, { error: 'Method not allowed' });
   }
 
   const KEY = process.env.GEMINI_API_KEY;
   if (!KEY) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'مفتاح جيميناي غير مضاف في إعدادات نيتلفاي' })
-    };
+    return respond(500, { error: 'مفتاح جيميناي غير مضاف في إعدادات نيتلفاي' });
   }
 
   let data;
   try {
     data = JSON.parse(event.body || '{}');
   } catch (e) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'بيانات غير صحيحة' })
-    };
+    return respond(400, { error: 'بيانات غير صحيحة' });
   }
+
+  const startedAt = Date.now();
 
   const brand = String(data.brand || 'غير محدد').slice(0, 80);
   const modelName = String(data.model || 'غير محدد').slice(0, 100);
@@ -102,11 +332,7 @@ exports.handler = async (event) => {
   const userCount = userMessages.length;
 
   if (userCount > MAX_USER_MESSAGES) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answer: 'خلصت المحادثة.', ended: true })
-    };
+    return respond(200, { answer: 'انتهت المحادثة.\n' + FAREWELL, ended: true });
   }
 
   let imageCount = 0;
@@ -114,71 +340,40 @@ exports.handler = async (event) => {
     if (m.media && m.media.data) imageCount++;
   }
   if (imageCount > MAX_IMAGES_PER_SESSION) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        answer: 'وصلت للحد الأقصى للصور في الجلسة دي، كمل وصفك بالكلام أو ابدأ تشخيص جديد.',
-        ended: false
-      })
-    };
+    return respond(200, {
+      answer: 'وصلت إلى الحد الأقصى للصور في هذه الجلسة. أكمل وصف المشكلة بالكلام، أو ابدأ تشخيصًا جديدًا.',
+      ended: false
+    });
   }
 
   const isFirstReply = userCount <= 1;
+  const ended = userCount >= MAX_USER_MESSAGES;
 
-  const system = `
-أنت فني صيانة موبايلات مصري خبير، عندك سنين خبرة في الورشة. بتتكلم مع عميل جاي لك بموبايل عطلان، وبتتكلم معاه زي ما الفني بيتكلم مع زبونه وهو واقف قدامه.
+  // ===== رد الشكر: ثابت وبدون استدعاء جيميناي =====
+  const lastUser = userMessages[userMessages.length - 1];
+  const lastHasImage = !!(lastUser && lastUser.media && lastUser.media.data);
+  if (!isFirstReply && !lastHasImage && lastUser && isThanksOnly(lastUser.text)) {
+    return respond(200, { answer: THANKS_REPLY + '\n' + FAREWELL, ended });
+  }
 
-بيانات الجهاز:
-- الماركة: ${brand}
-- الموديل: ${modelName}
-- إصدار النظام: ${os}
-- نوع العيب: ${fault}
+  const lastText = String((lastUser && lastUser.text) || '');
 
-طريقة كلامك:
-- الكلام بالعامية المصرية البسيطة، من غير عناوين ولا رموز ولا نجوم ولا قوائم نقطية.
-- اكتب بإملاء سليم وحروف صحيحة وكلمات مفهومة، وماتكتبش كلمات مقطوعة أو مكررة.
-- رتب الخطوات بكلمات زي: أولًا، ثانيًا، ثالثًا.
+  // ===== الخطوة 1: بحث الأسعار (في الرد الأول أو لو العميل سأل عن السعر) =====
+  let priceNotes = '';
+  if (isFirstReply || PRICE_WORDS.test(lastText)) {
+    try {
+      priceNotes = await lookupPrices(KEY, startedAt, { brand, modelName, fault, lastText });
+    } catch (_) {
+      priceNotes = '';
+    }
+  }
 
-${
-  isFirstReply
-    ? `
-ده أول رد ليك، فلازم يبقى رد كامل ومفصل في رسالة واحدة:
-1) اذكر كل الأسباب المحتملة للمشكلة دي، من الأكتر احتمالًا للأقل.
-2) لكل سبب اشرح الحل بالتفصيل وبالترتيب: يدخل على أنهي إعدادات، يدوس على إيه، بعدين إيه. وراعي إن أسماء القوائم بتختلف حسب الماركة وإصدار النظام.
-3) قول له لو الحل الأول ماجابش نتيجة يجرب الحل اللي بعده، وإيه الحل لو كل ده مانفعش.
-4) وضح أي حل ينفع في البيت وأي حل لازم ورشة، والتكلفة التقريبية بالجنيه المصري، وخطورة العطل باختصار.
-5) في آخر الرد اسأل سؤال واحد بس يقربك من السبب الحقيقي.
-متطلبش صورة ولا فيديو في أول رد.
-`
-    : `
-ده رد متابعة، فخليه قصير من ٣ لـ ٦ سطور:
-- افهم من إجابة العميل، واستبعد أو أكد سبب.
-- اسأل سؤال متابعة واحد بس، زي: جربت إيه؟ العطل ظهر امتى؟ في رسالة خطأ؟ ممكن تصور لي؟
-- لما توصل لتشخيص واضح: اذكر السبب المرجح، والخطوات العملية، وهل ينفع في البيت ولا لازم ورشة، والتكلفة التقريبية بالجنيه المصري.
-- متكررش حلول قلتها قبل كده.
-`
-}
-
-الصور والفيديو:
-- العميل ممكن يبعت صورة في أي وقت من نفسه. لو بعت، حللها وقوله المشكلة فين وسببها إيه والحل إيه، واقرأ أي رسالة خطأ أو كود ظاهر.
-- لو مش قادر توصل للمشكلة بالكلام، وقتها قول له يصور فيديو قصير أو صورة أوضح.
-- لو العطل واضح بالكلام متطلبش صورة.
-
-الأعطال الداخلية:
-- لو الحل محتاج فتح الجهاز أو لحام في البوردة: اشرح مكان العطل بالكلام بوضوح، ونبه إن ده شغل ورش متخصصة.
-
-قواعد عامة:
-- متخترعش معلومات. لو مش متأكد قول إنك مش متأكد.
-- متقولش إنك ذكاء اصطناعي.
-`.trim();
+  const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, priceNotes });
 
   const history = rawMessages.map((m) => {
     const parts = [];
     const text = typeof m.text === 'string' ? m.text.slice(0, MAX_TEXT_LENGTH).trim() : '';
-    if (text) {
-      parts.push({ text });
-    }
+    if (text) parts.push({ text });
 
     const base64Data = m.media && m.media.data ? sanitizeBase64(m.media.data) : '';
     if (base64Data) {
@@ -186,51 +381,47 @@ ${
         m.media && typeof m.media.mimeType === 'string' && m.media.mimeType.startsWith('image/')
           ? m.media.mimeType
           : 'image/jpeg';
-      parts.push({
-        inlineData: {
-          mimeType,
-          data: base64Data
-        }
-      });
+      parts.push({ inlineData: { mimeType, data: base64Data } });
     }
 
-    if (parts.length === 0) {
-      parts.push({ text: ' ' });
-    }
+    if (parts.length === 0) parts.push({ text: ' ' });
 
-    return {
-      role: m.role === 'user' ? 'user' : 'model',
-      parts
-    };
+    return { role: m.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const result = await callGemini(KEY, {
+  // ملاحظة مهمة: تمت إزالة temperature و topP. موديلات جيميناي 3 تعمل بأفضل جودة
+  // على القيمة الافتراضية، وخفض الحرارة يسبب كلمات مشوهة أو ناقصة في العربي.
+  const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: history
-  });
+  };
 
+  // ===== الخطوة 2: كتابة الرد (بدون أدوات بحث) =====
+  const result = await callGemini(KEY, body, startedAt);
   if (!result.ok) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: result.error })
-    };
+    return respond(500, { error: result.error });
   }
 
-  const cand = result.json && result.json.candidates && result.json.candidates[0];
-  const answer =
-    cand && cand.content && Array.isArray(cand.content.parts)
-      ? cand.content.parts
-          .map((p) => (p && typeof p.text === 'string' ? p.text : ''))
-          .join('')
-          .trim() || 'معنديش إجابة دلوقتي، جرب تاني.'
-      : 'معنديش إجابة دلوقتي، جرب تاني.';
+  let answer = extractAnswer(result.json);
 
-  const ended = userCount >= MAX_USER_MESSAGES;
+  // لو ظهرت حروف لاتينية ملتصقة بالعربي، أعد المحاولة مرة واحدة إن كان الوقت يسمح
+  if (hasGlitch(answer) && timeLeft(startedAt) > 9000) {
+    const retry = await callGemini(KEY, body, startedAt, { attempts: 1 });
+    if (retry.ok) {
+      const retryAnswer = extractAnswer(retry.json);
+      if (retryAnswer && !hasGlitch(retryAnswer)) answer = retryAnswer;
+    }
+  }
 
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answer, ended })
-  };
+  answer = cleanAnswer(answer, brand, modelName, os);
+  if (!answer) answer = 'لا توجد إجابة الآن، حاول مرة أخرى.';
+
+  // ===== الخطوة 3: تدقيق إملائي (يتخطى لو الوقت ضيق) =====
+  answer = await proofread(KEY, answer, startedAt);
+
+  if (isFirstReply) answer = WELCOME + '\n\n' + answer;
+  if (ended) answer = answer + '\n\n' + FAREWELL;
+
+  return respond(200, { answer, ended });
 };
+            
