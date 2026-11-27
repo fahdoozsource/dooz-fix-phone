@@ -3,7 +3,7 @@
 const { connectLambda, getStore } = require('@netlify/blobs');
 
 const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
-const PROOF_MODELS = ['gemini-3.5-flash-lite'];
+const FAST_MODELS = ['gemini-3.5-flash-lite'];
 const MAX_USER_MESSAGES = 6; // الرسالة الأولى + 5 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
@@ -179,9 +179,10 @@ async function lookupPrices(KEY, startedAt, ctx) {
   const t = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
   if (!t || (/غير متاح/.test(t) && t.length < 20)) return '';
   return t.slice(0, 600);
-}
+          }
+// ===== تدقيق إملائي (للرد الأول فقط، ومعطّل افتراضيًا لأن البرومبت مشدد على الإملاء) =====
+const ENABLE_PROOFREAD = false;
 
-// ===== تدقيق إملائي =====
 const PROOF_PROMPT =
   'أنت مدقق لغوي للعربية. ستصلك رسالة بالعامية المصرية المبسطة. ' +
   'صحح فقط الأخطاء الإملائية، والكلمات المشوهة أو الناقصة أو المكررة، وأي حروف لاتينية ملتصقة بكلمات عربية. ' +
@@ -193,6 +194,7 @@ function numbersOf(t) {
 }
 
 async function proofread(KEY, text, startedAt) {
+  if (!ENABLE_PROOFREAD) return text;
   if (timeLeft(startedAt) < 10000) return text;
 
   const body = {
@@ -201,9 +203,9 @@ async function proofread(KEY, text, startedAt) {
   };
 
   const r = await callGemini(KEY, body, startedAt, {
-    models: PROOF_MODELS,
+    models: FAST_MODELS,
     attempts: 1,
-    timeoutMs: 30000
+    timeoutMs: 20000
   });
   if (!r.ok) return text;
 
@@ -330,6 +332,7 @@ async function run(data) {
   }
 
   const lastText = String((lastUser && lastUser.text) || '');
+  // الأسعار: في الرد الأول، أو في المتابعة فقط لو العميل سأل عن السعر
   const needPrices = isFirstReply || PRICE_WORDS.test(lastText);
 
   const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply });
@@ -359,13 +362,20 @@ async function run(data) {
     contents: history
   };
 
+  // ===== إعدادات السرعة =====
+  // الرد الأول: الموديل الكبير ثم الاحتياطي، بمحاولتين.
+  // ردود المتابعة: الموديل السريع فقط، بمحاولة واحدة ومهلة قصيرة.
+  const mainOpts = isFirstReply
+    ? {}
+    : { models: FAST_MODELS, attempts: 1, timeoutMs: 40000 };
+
   // ===== بحث الأسعار + كتابة الرد (بالتوازي) =====
   const pricePromise = needPrices
     ? lookupPrices(KEY, startedAt, { brand, modelName, fault, lastText }).catch(() => '')
     : Promise.resolve('');
 
   const [result, priceNotes] = await Promise.all([
-    callGemini(KEY, body, startedAt),
+    callGemini(KEY, body, startedAt, mainOpts),
     pricePromise
   ]);
 
@@ -375,8 +385,8 @@ async function run(data) {
 
   let answer = extractAnswer(result.json);
 
-  // لو ظهرت حروف لاتينية ملتصقة بالعربي، أعد المحاولة مرة واحدة
-  if (hasGlitch(answer) && timeLeft(startedAt) > 30000) {
+  // لو ظهرت حروف لاتينية ملتصقة بالعربي في الرد الأول فقط، أعد المحاولة مرة واحدة
+  if (isFirstReply && hasGlitch(answer) && timeLeft(startedAt) > 30000) {
     const retry = await callGemini(KEY, body, startedAt, { attempts: 1 });
     if (retry.ok) {
       const retryAnswer = extractAnswer(retry.json);
@@ -387,8 +397,8 @@ async function run(data) {
   answer = cleanAnswer(answer, brand, modelName, os);
   if (!answer) answer = 'لا توجد إجابة الآن، حاول مرة أخرى.';
 
-  // ===== تدقيق إملائي =====
-  answer = await proofread(KEY, answer, startedAt);
+  // ===== تدقيق إملائي (معطّل افتراضيًا، فعّله من ENABLE_PROOFREAD) =====
+  if (isFirstReply) answer = await proofread(KEY, answer, startedAt);
 
   // ===== إضافة قسم التكلفة من نتائج البحث =====
   if (priceNotes) {
