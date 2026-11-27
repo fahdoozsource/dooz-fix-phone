@@ -458,20 +458,57 @@
     pendingImage = null;
     previewBox.style.display = 'none';
   });
+// ضع هذه الدالة داخل كود الصفحة (داخل وسم script) في أي مكان قبل استخدامها.
+// بتبعت الطلب لدالة الخلفية، وبعدين تسأل عن النتيجة كل 2.5 ثانية لحد ما تجهز.
+// بترجّع نفس الشكل القديم: { answer, ended } أو { error }
+async function askDiagnose(payload) {
+  const rand = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : String(Date.now()) + Math.random().toString(36).slice(2);
+  const jobId = rand.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);
 
+  try {
+    await fetch('/.netlify/functions/diagnose-background', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({}, payload, { jobId: jobId }))
+    });
+  } catch (e) {
+    return { error: 'تعذر الاتصال بالسيرفر، حاول مرة أخرى.' };
+  }
+
+  const deadline = Date.now() + 120000; // ننتظر دقيقتين كحد أقصى
+  while (Date.now() < deadline) {
+    await new Promise(function (r) { setTimeout(r, 2500); });
+    try {
+      const res = await fetch('/.netlify/functions/diagnose-result?id=' + encodeURIComponent(jobId));
+      const j = await res.json();
+      if (j.status === 'done') return { answer: j.answer, ended: j.ended };
+      if (j.status === 'error') return { error: j.error };
+    } catch (e) {
+      // نكمل المحاولة
+    }
+  }
+  return { error: 'استغرق الرد وقتًا أطول من المعتاد، حاول مرة أخرى.' };
+}
+
+// ===== طريقة الاستخدام =====
+// في كود الصفحة، دوّر على المكان اللي فيه:
+//   fetch('/.netlify/functions/diagnose', { ... })
+// وغيّر الكود حوالين الطلب ده، بحيث بدل:
+//   const res = await fetch('/.netlify/functions/diagnose', { method:'POST', body: JSON.stringify(payload) });
+//   const data = await res.json();
+// تكتب:
+//   const data = await askDiagnose(payload);
+// وباقي الكود (اللي بيعرض data.answer أو data.error) يفضل زي ما هو.
+  
   async function ask() {
     setBusy(true);
     showThinking();
-    try {
-      const res = await fetch('/.netlify/functions/diagnose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...info, messages })
-      });
-      const data = await res.json();
+    try {const data = await askDiagnose({ ...info, messages });
       hideThinking();
 
-      if (!res.ok || data.error) {
+      if (data.error) {
         addMsg(data.error || 'حصل خطأ في السيرفر، جرب تاني.', 'bot', null, true);
         setBusy(false);
         return;
