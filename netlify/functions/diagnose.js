@@ -1,4 +1,4 @@
-const MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.7-flash'];
+const MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
 const MAX_USER_MESSAGES = 11; // الرسالة الأولى + 10 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
