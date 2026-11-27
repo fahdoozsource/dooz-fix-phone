@@ -1,10 +1,11 @@
+// النسخة المتوازية: بحث الأسعار وكتابة الرد يشتغلان في نفس الوقت، ثم التدقيق الإملائي
 // الموديل الأقوى أولًا، والأخف احتياطي لو الأول فشل
 const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 const PROOF_MODELS = ['gemini-3.5-flash-lite'];
 const MAX_USER_MESSAGES = 6; // الرسالة الأولى + 5 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
-const TOTAL_BUDGET_MS = 24000; // أقل من مهلة الدالة (26 ثانية)
+const TOTAL_BUDGET_MS = 9000; // أقل من مهلة نيتلفاي (10 ثواني)
 const TIMEOUT_MSG = 'استغرق الرد وقتًا أطول من المعتاد، حاول مرة أخرى.';
 
 // ===== النصوص الثابتة (عدّلها من هنا) =====
@@ -12,6 +13,8 @@ const WELCOME =
   'وعليكم السلام ورحمة الله وبركاته، أهلًا بك في موقع ورشة دوز فيكس فون للاستشارة في مشاكل وأعطال الهواتف.';
 const THANKS_REPLY = 'الشكر لله، تحت أمرك.';
 const FAREWELL = 'السلام عليكم ورحمة الله وبركاته.';
+const PRICE_TITLE = 'التكلفة التقريبية:';
+const PRICE_NOTE = 'الأسعار تقريبية وقد تختلف قليلًا من ورشة إلى أخرى.';
 
 // مصطلحات لاتينية قصيرة مسموحة
 const LATIN_OK = new Set([
@@ -97,14 +100,14 @@ function cleanAnswer(text, brand, modelName, os) {
 // opts: { models, attempts, timeoutMs, search }
 async function callGemini(KEY, body, startedAt, opts = {}) {
   const models = opts.models || MODELS;
-  const attempts = opts.attempts || 2;
-  const maxTimeout = opts.timeoutMs || 22000;
+  const attempts = opts.attempts || 1;
+  const maxTimeout = opts.timeoutMs || 8500;
   let lastError = 'خطأ غير معروف';
 
   for (const model of models) {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const remaining = timeLeft(startedAt);
-      if (remaining < 4000) return { ok: false, error: TIMEOUT_MSG };
+      if (remaining < 2500) return { ok: false, error: TIMEOUT_MSG };
 
       try {
         const url =
@@ -119,7 +122,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(Math.min(remaining - 1000, maxTimeout))
+          signal: AbortSignal.timeout(Math.min(remaining - 500, maxTimeout))
         });
 
         let json = {};
@@ -142,7 +145,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
           e && e.name === 'TimeoutError' ? TIMEOUT_MSG : 'تعذر الاتصال بجيميناي';
       }
 
-      if (attempt < attempts) await sleep(600 * attempt);
+      if (attempt < attempts) await sleep(300 * attempt);
     }
   }
   return { ok: false, error: lastError };
@@ -158,11 +161,8 @@ function extractAnswer(json) {
     .trim();
 }
 
-// ===== الخطوة 1: بحث سريع عن الأسعار (منفصل عن كتابة الرد) =====
-// السبب: دمج البحث مع كتابة رد عربي طويل في نفس الطلب كان يسبب كلمات مشوهة.
+// ===== بحث سريع عن الأسعار (يشتغل بالتوازي مع كتابة الرد) =====
 async function lookupPrices(KEY, startedAt, ctx) {
-  if (timeLeft(startedAt) < 13000) return '';
-
   const prompt =
     'ابحث عن الأسعار الحالية في السوق المصرية بالجنيه المصري.\n' +
     'الجهاز: ' + ctx.brand + ' ' + ctx.modelName + '\n' +
@@ -177,17 +177,17 @@ async function lookupPrices(KEY, startedAt, ctx) {
   const r = await callGemini(KEY, body, startedAt, {
     models: [MODELS[0]],
     attempts: 1,
-    timeoutMs: 9000,
+    timeoutMs: 6500,
     search: true
   });
   if (!r.ok) return '';
 
   const t = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
-  if (!t || /غير متاح/.test(t) && t.length < 20) return '';
+  if (!t || (/غير متاح/.test(t) && t.length < 20)) return '';
   return t.slice(0, 600);
 }
 
-// ===== الخطوة 3: تدقيق إملائي سريع =====
+// ===== تدقيق إملائي سريع =====
 const PROOF_PROMPT =
   'أنت مدقق لغوي للعربية. ستصلك رسالة بالعامية المصرية المبسطة. ' +
   'صحح فقط الأخطاء الإملائية، والكلمات المشوهة أو الناقصة أو المكررة، وأي حروف لاتينية ملتصقة بكلمات عربية. ' +
@@ -199,7 +199,7 @@ function numbersOf(t) {
 }
 
 async function proofread(KEY, text, startedAt) {
-  if (timeLeft(startedAt) < 7000) return text;
+  if (timeLeft(startedAt) < 3500) return text; // الوقت ضيق، نتخطى التدقيق
 
   const body = {
     systemInstruction: { parts: [{ text: PROOF_PROMPT }] },
@@ -209,7 +209,7 @@ async function proofread(KEY, text, startedAt) {
   const r = await callGemini(KEY, body, startedAt, {
     models: PROOF_MODELS,
     attempts: 1,
-    timeoutMs: 8000
+    timeoutMs: 5000
   });
   if (!r.ok) return text;
 
@@ -225,12 +225,8 @@ async function proofread(KEY, text, startedAt) {
   return fixed;
 }
 
-function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, priceNotes }) {
+function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply }) {
   const today = new Date().toISOString().slice(0, 10);
-
-  const priceSource = priceNotes
-    ? 'هذه نتائج بحث حديثة عن الأسعار، اعتمد عليها كمرجع:\n' + priceNotes + '\nاذكر منها رقمًا واحدًا تقريبيًا لكل بند.'
-    : 'لا تتوفر لديك الآن نتائج بحث عن الأسعار. إذا ذكرت أسعارًا فقل صراحة إنها تقدير تقريبي.';
 
   return `
 أنت فني صيانة هواتف محمولة مصري خبير، لديك سنوات طويلة من الخبرة العملية في الورشة، وتشخّص الأعطال وتشرح الحلول لعميل يكتب لك عن جهازه.
@@ -265,7 +261,6 @@ ${
 ثانيًا: لكل سبب اشرح الحل بالتفصيل وبالترتيب: الدخول على أي إعدادات، والضغط على ماذا، ثم ماذا. وراعِ أن أسماء القوائم تختلف حسب الماركة وإصدار النظام.
 ثالثًا: وضّح ما يُجرَّب بعد ذلك إذا لم ينجح الحل الأول، وما الحل النهائي إذا فشلت كل الحلول.
 رابعًا: وضّح أي حل يصلح في البيت وأي حل يحتاج ورشة، ودرجة خطورة العطل باختصار.
-خامسًا: اذكر التكلفة بالجنيه المصري حسب قواعد الأسعار بالأسفل.
 في آخر الرد اسأل سؤالًا واحدًا فقط يقرّبك من السبب الحقيقي.
 لا تطلب صورة ولا فيديو في الرد الأول.
 `
@@ -274,19 +269,13 @@ ${
 - اجعل الرد قصيرًا من 3 إلى 6 أسطر.
 - افهم من كلام العميل، ثم أكّد سببًا أو استبعده.
 - اسأل سؤال متابعة واحدًا فقط عند الحاجة، مثل: ماذا جربت؟ متى ظهر العطل؟ هل تظهر رسالة خطأ؟ هل يمكنك تصويره؟
-- عند الوصول إلى تشخيص واضح اذكر السبب المرجح، والحل النهائي بخطواته، وهل يصلح في البيت أم يحتاج ورشة، والتكلفة حسب قواعد الأسعار.
+- عند الوصول إلى تشخيص واضح اذكر السبب المرجح، والحل النهائي بخطواته، وهل يصلح في البيت أم يحتاج ورشة.
 - لا تكرر حلولًا ذكرتها من قبل.
 `
 }
 
-قواعد الأسعار:
-- ${priceSource}
-- اذكر رقمًا واحدًا تقريبيًا لكل بند بصيغة: سعر القطعة تقريبًا (رقم) جنيه، والمصنعية تقريبًا (رقم) جنيه. ممنوع ذكر نطاق سعري مثل: من 100 إلى 150.
-- الأسعار تختلف من عطل إلى آخر ومن موديل إلى آخر، فلا تكرر نفس الرقم لكل الأعطال.
-- إذا كان السعر يختلف حسب الجودة (أصلي أو تجاري أو بديل) فاذكر رقمًا لكل نوع.
-- العطل الذي يُحل بإعدادات أو سوفت وير داخل الهاتف مجاني، ولا تذكر له سعرًا.
-- لا تخترع سعرًا أبدًا. إذا لم تجد سعرًا موثوقًا فقل بصراحة إن الرقم تقدير تقريبي.
-- نبّه في جملة واحدة قصيرة أن الأسعار تقريبية وقد تختلف قليلًا من ورشة إلى أخرى.
+الأسعار:
+- لا تذكر أي أسعار أو تكلفة أو مصنعية في ردك أبدًا، فالنظام سيضيف قسم التكلفة تلقائيًا بعد ردك. إذا سأل العميل عن السعر فقل فقط إن التكلفة التقريبية مكتوبة في نهاية الرد.
 
 الصور والفيديو:
 - قد يرسل العميل صورة في أي وقت. إذا أرسلها فحللها، وقل أين المشكلة وما سببها وما الحل، واقرأ أي رسالة خطأ أو كود ظاهر فيها.
@@ -357,18 +346,9 @@ exports.handler = async (event) => {
   }
 
   const lastText = String((lastUser && lastUser.text) || '');
+  const needPrices = isFirstReply || PRICE_WORDS.test(lastText);
 
-  // ===== الخطوة 1: بحث الأسعار (في الرد الأول أو لو العميل سأل عن السعر) =====
-  let priceNotes = '';
-  if (isFirstReply || PRICE_WORDS.test(lastText)) {
-    try {
-      priceNotes = await lookupPrices(KEY, startedAt, { brand, modelName, fault, lastText });
-    } catch (_) {
-      priceNotes = '';
-    }
-  }
-
-  const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, priceNotes });
+  const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply });
 
   const history = rawMessages.map((m) => {
     const parts = [];
@@ -389,15 +369,22 @@ exports.handler = async (event) => {
     return { role: m.role === 'user' ? 'user' : 'model', parts };
   });
 
-  // ملاحظة مهمة: تمت إزالة temperature و topP. موديلات جيميناي 3 تعمل بأفضل جودة
-  // على القيمة الافتراضية، وخفض الحرارة يسبب كلمات مشوهة أو ناقصة في العربي.
+  // ملاحظة: لا نضع temperature ولا topP، فالقيمة الافتراضية أفضل للعربي في جيميناي 3.
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: history
   };
 
-  // ===== الخطوة 2: كتابة الرد (بدون أدوات بحث) =====
-  const result = await callGemini(KEY, body, startedAt);
+  // ===== الخطوتان 1 و2 معًا: بحث الأسعار + كتابة الرد (بالتوازي) =====
+  const pricePromise = needPrices
+    ? lookupPrices(KEY, startedAt, { brand, modelName, fault, lastText }).catch(() => '')
+    : Promise.resolve('');
+
+  const [result, priceNotes] = await Promise.all([
+    callGemini(KEY, body, startedAt),
+    pricePromise
+  ]);
+
   if (!result.ok) {
     return respond(500, { error: result.error });
   }
@@ -405,8 +392,8 @@ exports.handler = async (event) => {
   let answer = extractAnswer(result.json);
 
   // لو ظهرت حروف لاتينية ملتصقة بالعربي، أعد المحاولة مرة واحدة إن كان الوقت يسمح
-  if (hasGlitch(answer) && timeLeft(startedAt) > 9000) {
-    const retry = await callGemini(KEY, body, startedAt, { attempts: 1 });
+  if (hasGlitch(answer) && timeLeft(startedAt) > 6000) {
+    const retry = await callGemini(KEY, body, startedAt);
     if (retry.ok) {
       const retryAnswer = extractAnswer(retry.json);
       if (retryAnswer && !hasGlitch(retryAnswer)) answer = retryAnswer;
@@ -419,9 +406,15 @@ exports.handler = async (event) => {
   // ===== الخطوة 3: تدقيق إملائي (يتخطى لو الوقت ضيق) =====
   answer = await proofread(KEY, answer, startedAt);
 
+  // ===== إضافة قسم التكلفة من نتائج البحث =====
+  if (priceNotes) {
+    const prices = cleanAnswer(priceNotes, brand, modelName, os);
+    if (prices) answer = answer + '\n\n' + PRICE_TITLE + '\n' + prices + '\n' + PRICE_NOTE;
+  }
+
   if (isFirstReply) answer = WELCOME + '\n\n' + answer;
   if (ended) answer = answer + '\n\n' + FAREWELL;
 
   return respond(200, { answer, ended });
 };
-            
+    
