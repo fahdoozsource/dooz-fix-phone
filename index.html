@@ -101,8 +101,7 @@
   .dots i:nth-child(2) { background: var(--violet); animation-delay: .18s; }
   .dots i:nth-child(3) { background: var(--pink); animation-delay: .36s; }
   @keyframes bounce { 0%, 80%, 100% { transform: scale(.5); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
-
-  #counter { display: none; text-align: center; font-size: 13px; color: var(--amber); margin: 6px 0 2px; }
+#counter { display: none; text-align: center; font-size: 13px; color: var(--amber); margin: 6px 0 2px; }
 
   #composer { margin-top: 10px; padding: 10px; background: rgba(8,12,30,.7); border: 1px solid var(--line); border-radius: 16px; }
   #composer textarea { min-height: 78px; max-height: 200px; border: none; background: transparent; padding: 6px 8px; box-shadow: none; resize: none; }
@@ -119,38 +118,36 @@
   #ended h3 { margin: 0 0 6px; color: var(--amber); }
   #ended p { margin: 0 0 4px; color: var(--muted); }
 
-  /* الزرارات الجديدة */
-  .link-btn {
-    width: 100%; margin-top: 10px; padding: 11px; font-size: 14px;
-    background: rgba(120,150,255,.12); color: var(--text);
-    border: 1px dashed var(--line); border-radius: 12px;
-  }
-  .link-btn:hover { background: rgba(120,150,255,.22); }
-  #unsolvedBtn { display: none; margin-top: 8px; }
-  .bottom-links { display: flex; flex-direction: column; gap: 0; margin-top: 6px; }
 
-  /* النافذة */
-  #modal {
-    display: none; position: fixed; inset: 0; z-index: 50;
-    background: rgba(3,6,18,.78); backdrop-filter: blur(6px);
-    align-items: center; justify-content: center; padding: 16px;
+  /* ===== أزرار ثانوية ونوافذ الإرسال ===== */
+  .ghost-btn {
+    background: rgba(120,150,255,.12); color: var(--text);
+    border: 1px dashed var(--line); margin-top: 12px;
   }
-  #modal.open { display: flex; }
-  .modal-card {
-    width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
-    padding: 20px; background: #0d1430;
-    border: 1px solid var(--line); border-radius: 20px;
+  .link-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .link-row button { flex: 1; min-width: 140px; margin-top: 0; padding: 10px; font-size: 14px; }
+  #unsolvedBtn { display: none; }
+
+  .modal-back {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(3,6,18,.78); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center; padding: 16px; overflow-y: auto;
+  }
+  .modal-back.open { display: flex; }
+  .modal {
+    width: 100%; max-width: 480px; padding: 22px;
+    background: #0b1330; border: 1px solid var(--line); border-radius: 20px;
     box-shadow: 0 20px 60px rgba(0,0,0,.6);
   }
-  .modal-card h3 { margin: 0 0 4px; font-size: 20px; color: var(--cyan); }
-  .modal-card .sub { margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.7; }
-  .modal-card textarea { min-height: 90px; }
-  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
-  .modal-actions button { margin: 0; }
-  #modalCancel { background: rgba(120,150,255,.16); color: var(--text); }
-  #modalStatus { margin-top: 12px; text-align: center; font-size: 14px; min-height: 20px; }
-  #modalStatus.ok { color: #6ee7b7; }
-  #modalStatus.bad { color: #fca5a5; }
+  .modal h3 { margin: 0 0 6px; color: var(--cyan); font-size: 20px; }
+  .modal .sub { margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .modal textarea { min-height: 90px; }
+  .modal .row { display: flex; gap: 10px; margin-top: 16px; }
+  .modal .row button { margin-top: 0; }
+  .modal .cancel { background: #1e2a55; color: var(--text); }
+  .modal .status { min-height: 22px; margin-top: 12px; font-size: 14px; text-align: center; }
+  .modal .status.err { color: #fca5a5; }
+  .modal .status.ok { color: #86efac; }
 
   @media (max-width: 560px) {
     body { padding: 10px; } .box { padding: 16px; }
@@ -162,16 +159,9 @@
 </head>
 <body>
 
-<div class="bg-art" aria-hidden="true">
-  <svg class="a1" viewBox="0 0 64 110" fill="none" stroke="#22d3ee" stroke-width="3"><rect x="6" y="4" width="52" height="102" rx="10"/><rect x="26" y="9" width="12" height="4" rx="2"/></svg>
-  <svg class="a2" viewBox="0 0 100 100" fill="none" stroke="#8b5cf6" stroke-width="6"><circle cx="50" cy="50" r="16"/><path d="M50 8v14M50 78v14M8 50h14M78 50h14M20 20l10 10M70 70l10 10M80 20L70 30M30 70L20 80"/></svg>
-  <svg class="a3" viewBox="0 0 64 110" fill="none" stroke="#f472b6" stroke-width="3"><rect x="6" y="4" width="52" height="102" rx="10"/><circle cx="22" cy="20" r="6"/><circle cx="40" cy="20" r="6"/></svg>
-  <svg class="a4" viewBox="0 0 100 100" fill="none" stroke="#fbbf24" stroke-width="7"><path d="M70 14a22 22 0 0 0-26 28L14 72l14 14 30-30a22 22 0 0 0 28-26l-14 14-12-4-4-12z"/></svg>
-  <svg class="a5" viewBox="0 0 100 60" fill="none" stroke="#22d3ee" stroke-width="5"><rect x="4" y="10" width="82" height="40" rx="6"/><rect x="86" y="22" width="10" height="16" rx="3"/><path d="M18 22h30"/></svg>
-</div>
-
-<!-- نماذج مخفية: نيتلفاي بيقراها وقت النشر عشان يستقبل الرسايل. متمسحهاش -->
-<form name="feedback" data-netlify="true" hidden>
+<!-- فورم مخفي: ضروري لكي يتعرف نتلايفاي على نموذج الاقتراحات والموديلات الناقصة (الطريقة الاحتياطية) -->
+<form name="feedback" data-netlify="true" netlify-honeypot="bot-field" hidden>
+  <input name="bot-field">
   <input name="type">
   <input name="brand">
   <input name="model">
@@ -179,6 +169,14 @@
   <textarea name="message"></textarea>
   <textarea name="conversation"></textarea>
 </form>
+
+<div class="bg-art" aria-hidden="true">
+  <svg class="a1" viewBox="0 0 64 110" fill="none" stroke="#22d3ee" stroke-width="3"><rect x="6" y="4" width="52" height="102" rx="10"/><rect x="26" y="9" width="12" height="4" rx="2"/></svg>
+  <svg class="a2" viewBox="0 0 100 100" fill="none" stroke="#8b5cf6" stroke-width="6"><circle cx="50" cy="50" r="16"/><path d="M50 8v14M50 78v14M8 50h14M78 50h14M20 20l10 10M70 70l10 10M80 20L70 30M30 70L20 80"/></svg>
+  <svg class="a3" viewBox="0 0 64 110" fill="none" stroke="#f472b6" stroke-width="3"><rect x="6" y="4" width="52" height="102" rx="10"/><circle cx="22" cy="20" r="6"/><circle cx="40" cy="20" r="6"/></svg>
+  <svg class="a4" viewBox="0 0 100 100" fill="none" stroke="#fbbf24" stroke-width="7"><path d="M70 14a22 22 0 0 0-26 28L14 72l14 14 30-30a22 22 0 0 0 28-26l-14 14-12-4-4-12z"/></svg>
+  <svg class="a5" viewBox="0 0 100 60" fill="none" stroke="#22d3ee" stroke-width="5"><rect x="4" y="10" width="82" height="40" rx="6"/><rect x="86" y="22" width="10" height="16" rx="3"/><path d="M18 22h30"/></svg>
+</div>
 
 <div class="box">
   <div class="head">
@@ -197,8 +195,6 @@
       <div class="info"><b id="modelName"></b><span id="brandName"></span></div>
     </div>
 
-    <button id="missingModelBtn" class="link-btn" type="button">مش لاقي موديل موبايلي في القايمة</button>
-
     <label for="os">نظام التشغيل وإصداره (مثلًا أندرويد 15 أو iOS 18)</label>
     <input id="os" type="text" placeholder="اكتب إصدار النظام">
     <label for="fault">نوع العيب</label>
@@ -206,19 +202,18 @@
     <label for="desc">اشرح المشكلة بالتفصيل</label>
     <textarea id="desc" placeholder="مثال: الشاشة اتغيرت وحساس المكالمات مش شغال..."></textarea>
     <button id="start">ابدأ الكلام مع الفني</button>
-
-    <div class="bottom-links">
-      <button id="suggestBtn" class="link-btn" type="button">عندك اقتراح لتطوير الموقع؟</button>
+    <div class="link-row">
+      <button id="missingBtn" class="ghost-btn" type="button">مش لاقي موديلك؟</button>
+      <button id="suggestBtn" class="ghost-btn" type="button">اقتراح لتطوير الموقع</button>
     </div>
   </div>
-
   <div id="chat">
     <div class="chat-top">
       <button id="copyLast" class="copy-btn" type="button">نسخ آخر رد</button>
     </div>
     <div id="log"></div>
     <div id="counter"></div>
-    <button id="unsolvedBtn" class="link-btn" type="button">المشكلة ماتحلتش معايا</button>
+    <button id="unsolvedBtn" class="ghost-btn" type="button">المشكلة ماتحلتش معايا</button>
     <div id="composer">
       <div id="preview"><img id="previewImg" alt=""><button id="removeImg" type="button">إلغاء الصورة</button></div>
       <textarea id="text" placeholder="اكتب ردك هنا..."></textarea>
@@ -236,36 +231,61 @@
   </div>
 </div>
 
-<!-- النافذة المشتركة للشكاوي والاقتراحات -->
-<div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-  <div class="modal-card">
-    <h3 id="modalTitle"></h3>
-    <p class="sub" id="modalSub"></p>
-
-    <div id="modalModelFields">
-      <label for="fbBrand">الماركة</label>
-      <input id="fbBrand" type="text" placeholder="مثال: Samsung">
-      <label for="fbModel">اسم الموديل</label>
-      <input id="fbModel" type="text" placeholder="مثال: Galaxy A07">
+<div class="modal-back" id="modalMissing" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
+  <div class="modal">
+    <h3 id="mmTitle">مش لاقي موديلك؟</h3>
+    <p class="sub">اكتب اسم موبايلك وهنضيفه في الموقع قريب.</p>
+    <label for="mmBrand">الماركة</label>
+    <input id="mmBrand" type="text" maxlength="80">
+    <label for="mmModel">اسم الموديل</label>
+    <input id="mmModel" type="text" maxlength="100">
+    <label for="mmMsg">أي تفاصيل تانية (اختياري)</label>
+    <textarea id="mmMsg" maxlength="2000"></textarea>
+    <label for="mmContact">وسيلة تواصل (اختياري): رقم هاتف أو إيميل أو طريقة تواصل لو حابب نتواصل معاك بعد تحديث البيانات</label>
+    <input id="mmContact" type="text" maxlength="200" placeholder="ممكن تسيبها فاضية">
+    <div class="status" id="mmStatus"></div>
+    <div class="row">
+      <button id="mmSend" type="button">إرسال</button>
+      <button id="mmCancel" class="cancel" type="button">إلغاء</button>
     </div>
+  </div>
+</div>
 
-    <label for="fbMessage" id="fbMessageLabel">الرسالة</label>
-    <textarea id="fbMessage" placeholder="اكتب هنا..."></textarea>
+<div class="modal-back" id="modalSuggest" role="dialog" aria-modal="true" aria-labelledby="msTitle">
+  <div class="modal">
+    <h3 id="msTitle">اقتراح لتطوير الموقع</h3>
+    <p class="sub">قول لنا إيه اللي نضيفه أو نحسنه.</p>
+    <label for="msMsg">اقتراحك</label>
+    <textarea id="msMsg" maxlength="2000"></textarea>
+    <label for="msContact">وسيلة تواصل (اختياري): رقم هاتف أو إيميل أو طريقة تواصل لو حابب نتواصل معاك</label>
+    <input id="msContact" type="text" maxlength="200" placeholder="ممكن تسيبها فاضية">
+    <div class="status" id="msStatus"></div>
+    <div class="row">
+      <button id="msSend" type="button">إرسال</button>
+      <button id="msCancel" class="cancel" type="button">إلغاء</button>
+    </div>
+  </div>
+</div>
 
-    <label for="fbContact">وسيلة تواصل (اختياري: رقم هاتف أو إيميل أو طريقة تواصل اذا حابب التواصل معك بعد تحديث البيانات ووجود حل لمشكلتك)</label>
-    <input id="fbContact" type="text" placeholder="ممكن تسبها فاضية">
-
-    <div id="modalStatus"></div>
-    <div class="modal-actions">
-      <button id="modalSend" type="button">إرسال</button>
-      <button id="modalCancel" type="button">إلغاء</button>
+<div class="modal-back" id="modalUnsolved" role="dialog" aria-modal="true" aria-labelledby="muTitle">
+  <div class="modal">
+    <h3 id="muTitle">المشكلة ماتحلتش معاك؟</h3>
+    <p class="sub">هنبعت المحادثة كاملة لفريق الورشة عشان يراجعوها. سيب وسيلة تواصل لو حابب نتواصل معاك لما نلاقي حل.</p>
+    <label for="muMsg">تفاصيل إضافية (اختياري)</label>
+    <textarea id="muMsg" maxlength="2000"></textarea>
+    <label for="muContact">وسيلة تواصل (اختياري): رقم هاتف أو إيميل أو طريقة تواصل</label>
+    <input id="muContact" type="text" maxlength="200" placeholder="ممكن تسيبها فاضية">
+    <div class="status" id="muStatus"></div>
+    <div class="row">
+      <button id="muSend" type="button">إرسال</button>
+      <button id="muCancel" class="cancel" type="button">إلغاء</button>
     </div>
   </div>
 </div>
 
 <script src="phones.js"></script>
 <script>
-  const MAX_FOLLOWUPS = 10;
+  const MAX_FOLLOWUPS = 5;
 
   const brandEl = document.getElementById('brand');
   const modelEl = document.getElementById('model');
@@ -287,9 +307,8 @@
   const phoneArt = document.getElementById('phoneArt');
   const modelName = document.getElementById('modelName');
   const brandName = document.getElementById('brandName');
-  const unsolvedBtn = document.getElementById('unsolvedBtn');
 
-  const BRAND_COLORS = {
+    const BRAND_COLORS = {
     'Samsung': ['#1428a0', '#4f7cff'],
     'Apple iPhone': ['#6b7280', '#e5e7eb'],
     'Xiaomi': ['#ff6900', '#ffb27a'],
@@ -349,7 +368,6 @@
   let pendingImage = null;
   let followups = 0;
   let thinkingEl = null;
-  let thinkingTimers = [];
   let lastBotReply = '';
 
   function setBusy(busy) {
@@ -357,7 +375,6 @@
     textEl.disabled = busy;
     camBtn.disabled = busy;
     removeImg.disabled = busy;
-    unsolvedBtn.disabled = busy;
   }
 
   function addMsg(text, who, imgSrc, isError) {
@@ -374,38 +391,14 @@
     return d;
   }
 
-  const THINKING_STEPS = [
-    { at: 0,     text: 'تم إرسال مشكلتك للفني' },
-    { at: 2500,  text: 'الفني استلم رسالتك وبيقراها' },
-    { at: 5500,  text: 'الفني بيشوف العطل بتاعك' },
-    { at: 9000,  text: 'الفني بيحدد مكان العطل وسببه' },
-    { at: 13000, text: 'الفني بيجهز لك الحل بالتفصيل' },
-    { at: 18000, text: 'الفني بيكتب لك الرد، ثواني وهيوصل' }
-  ];
-
   function showThinking() {
     thinkingEl = document.createElement('div');
     thinkingEl.className = 'msg bot thinking';
-    const dots = document.createElement('div');
-    dots.className = 'dots';
-    dots.innerHTML = '<i></i><i></i><i></i>';
-    const label = document.createElement('span');
-    thinkingEl.appendChild(dots);
-    thinkingEl.appendChild(label);
+    thinkingEl.innerHTML = '<div class="dots"><i></i><i></i><i></i></div><span>الفني بيفكر في حالتك... استنى ثواني</span>';
     logEl.appendChild(thinkingEl);
     logEl.scrollTop = logEl.scrollHeight;
-
-    THINKING_STEPS.forEach(step => {
-      const t = setTimeout(() => {
-        label.textContent = step.text;
-        logEl.scrollTop = logEl.scrollHeight;
-      }, step.at);
-      thinkingTimers.push(t);
-    });
   }
   function hideThinking() {
-    thinkingTimers.forEach(clearTimeout);
-    thinkingTimers = [];
     if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   }
 
@@ -419,6 +412,7 @@
     composerEl.style.display = 'none';
     counterEl.style.display = 'none';
     endedEl.style.display = 'block';
+    unsolvedBtn.style.display = 'block';
   }
 
   function shrinkImage(file) {
@@ -447,8 +441,7 @@
       reader.readAsDataURL(file);
     });
   }
-
-  camBtn.addEventListener('click', () => fileEl.click());
+ camBtn.addEventListener('click', () => fileEl.click());
   fileEl.addEventListener('change', async () => {
     const f = fileEl.files[0];
     if (!f) return;
@@ -498,6 +491,7 @@
       lastBotReply = answer;
       messages.push({ role: 'model', text: answer });
       addMsg(answer, 'bot');
+      showUnsolved();
       if (followups >= MAX_FOLLOWUPS) {
         endChat();
       }
@@ -518,7 +512,6 @@
     };
     document.getElementById('setup').style.display = 'none';
     document.getElementById('chat').style.display = 'block';
-    unsolvedBtn.style.display = 'block';
     const first = 'السلام عليكم، معايا ' + info.brand + ' ' + info.model + ' و' + info.fault + (info.desc ? '. ' + info.desc : '');
     messages.push({ role: 'user', text: first });
     addMsg(first, 'me');
@@ -559,128 +552,118 @@
     } catch (_) {}
   });
 
-  restartBtn.addEventListener('click', () => location.reload());
-  
-  // ===== الشكاوي والاقتراحات =====
-  const modalEl = document.getElementById('modal');
-  const modalTitle = document.getElementById('modalTitle');
-  const modalSub = document.getElementById('modalSub');
-  const modalModelFields = document.getElementById('modalModelFields');
-  const fbBrand = document.getElementById('fbBrand');
-  const fbModel = document.getElementById('fbModel');
-  const fbMessage = document.getElementById('fbMessage');
-  const fbMessageLabel = document.getElementById('fbMessageLabel');
-  const fbContact = document.getElementById('fbContact');
-  const modalStatus = document.getElementById('modalStatus');
-  const modalSend = document.getElementById('modalSend');
-  const modalCancel = document.getElementById('modalCancel');
 
-  let modalType = '';
-
-  const MODAL_CONFIG = {
-    'unsolved': {
-      title: 'المشكلة ماتحلتش معاك',
-      sub: 'ابعت لنا المشكلة ونراجعها ونرد عليك بحل تاني. سيب وسيلة تواصل لو عاوزنا نرجع لك.',
-      label: 'إيه اللي جربته وماتحلش؟ (اختياري)',
-      showModel: false
-    },
-    'missing-model': {
-      title: 'مش لاقي موديلك؟',
-      sub: 'اكتب اسم موبايلك وهنضيفه في الموقع قريب.',
-      label: 'أي تفاصيل تانية (اختياري)',
-      showModel: true
-    },
-    'suggestion': {
-      title: 'اقتراح لتطوير الموقع',
-      sub: 'قول لنا إيه اللي نضيفه أو نحسنه.',
-      label: 'اقتراحك',
-      showModel: false
-    }
-  };
-
-  function openModal(type) {
-    modalType = type;
-    const cfg = MODAL_CONFIG[type];
-    modalTitle.textContent = cfg.title;
-    modalSub.textContent = cfg.sub;
-    fbMessageLabel.textContent = cfg.label;
-    modalModelFields.style.display = cfg.showModel ? 'block' : 'none';
-    fbBrand.value = type === 'missing-model' ? brandEl.value : '';
-    fbModel.value = '';
-    fbMessage.value = '';
-    fbContact.value = '';
-    modalStatus.textContent = '';
-    modalStatus.className = '';
-    modalSend.disabled = false;
-    modalEl.classList.add('open');
-  }
-
-  function closeModal() {
-    modalEl.classList.remove('open');
-  }
-
-  function conversationText() {
-    return messages.map(m => (m.role === 'user' ? 'العميل: ' : 'الفني: ') + (m.text || '')).join('\n\n');
-  }
-
-  function encodeForm(obj) {
-    return Object.keys(obj).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(obj[k])).join('&');
-  }
-
-  async function submitFeedback() {
-    const message = fbMessage.value.trim();
-    const brand = modalType === 'missing-model' ? fbBrand.value.trim() : (info.brand || '');
-    const model = modalType === 'missing-model' ? fbModel.value.trim() : (info.model || '');
-
-    if (modalType === 'suggestion' && !message) {
-      modalStatus.textContent = 'اكتب اقتراحك الأول.';
-      modalStatus.className = 'bad';
-      return;
-    }
-    if (modalType === 'missing-model' && !model) {
-      modalStatus.textContent = 'اكتب اسم الموديل الأول.';
-      modalStatus.className = 'bad';
-      return;
-    }
-
-    modalSend.disabled = true;
-    modalStatus.textContent = 'جاري الإرسال...';
-    modalStatus.className = '';
-
-    const payload = {
-      'form-name': 'feedback',
-      type: modalType,
-      brand: brand,
-      model: model,
-      contact: fbContact.value.trim(),
-      message: message,
-      conversation: modalType === 'unsolved' ? conversationText().slice(0, 6000) : ''
-    };
-
+  // ===== إرسال الاقتراحات والموديلات الناقصة والمشاكل غير المحلولة =====
+  async function sendFeedback(payload, statusEl, sendButton, onDone) {
+    statusEl.className = 'status';
+    statusEl.textContent = 'جاري الإرسال...';
+    sendButton.disabled = true;
     try {
-      const res = await fetch('/', {
+      const res = await fetch('/.netlify/functions/feedback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: encodeForm(payload)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('bad status');
-      modalStatus.textContent = 'وصلتنا رسالتك، شكرًا ليك 🙏';
-      modalStatus.className = 'ok';
-      setTimeout(closeModal, 1800);
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok || data.error) {
+        statusEl.className = 'status err';
+        statusEl.textContent = data.error && data.error !== 'تعذر الإرسال'
+          ? data.error
+          : 'حصلت مشكلة في الإرسال، جرب تاني.';
+        sendButton.disabled = false;
+        return;
+      }
+      statusEl.className = 'status ok';
+      statusEl.textContent = 'تم الإرسال، شكرًا ليك.';
+      setTimeout(() => { sendButton.disabled = false; onDone(); }, 1200);
     } catch (e) {
-      modalStatus.textContent = 'حصلت مشكلة في الإرسال، جرب تاني.';
-      modalStatus.className = 'bad';
-      modalSend.disabled = false;
+      statusEl.className = 'status err';
+      statusEl.textContent = 'حصلت مشكلة في الاتصال، جرب تاني.';
+      sendButton.disabled = false;
     }
   }
+function bindModal(openBtn, backId, cancelId, onOpen) {
+    const back = document.getElementById(backId);
+    const open = () => { if (onOpen) onOpen(); back.classList.add('open'); };
+    const close = () => back.classList.remove('open');
+    openBtn.addEventListener('click', open);
+    document.getElementById(cancelId).addEventListener('click', close);
+    back.addEventListener('click', (e) => { if (e.target === back) close(); });
+    return { back, close };
+  }
 
-  document.getElementById('missingModelBtn').addEventListener('click', () => openModal('missing-model'));
-  document.getElementById('suggestBtn').addEventListener('click', () => openModal('suggestion'));
-  unsolvedBtn.addEventListener('click', () => openModal('unsolved'));
-  modalSend.addEventListener('click', submitFeedback);
-  modalCancel.addEventListener('click', closeModal);
-  modalEl.addEventListener('click', e => { if (e.target === modalEl) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  // 1) مش لاقي موديلك
+  const mm = bindModal(document.getElementById('missingBtn'), 'modalMissing', 'mmCancel', () => {
+    const b = document.getElementById('mmBrand');
+    if (!b.value) b.value = brandEl.value === 'Other' ? '' : brandEl.value;
+    document.getElementById('mmStatus').textContent = '';
+  });
+  document.getElementById('mmSend').addEventListener('click', () => {
+    const model = document.getElementById('mmModel').value.trim();
+    const st = document.getElementById('mmStatus');
+    if (!model) { st.className = 'status err'; st.textContent = 'اكتب اسم الموديل أولًا.'; return; }
+    sendFeedback({
+      type: 'missing-model',
+      brand: document.getElementById('mmBrand').value.trim(),
+      model,
+      message: document.getElementById('mmMsg').value.trim(),
+      contact: document.getElementById('mmContact').value.trim()
+    }, st, document.getElementById('mmSend'), () => {
+      ['mmModel', 'mmMsg', 'mmContact'].forEach(id => document.getElementById(id).value = '');
+      mm.close();
+    });
+  });
+
+  // 2) اقتراح لتطوير الموقع
+  const ms = bindModal(document.getElementById('suggestBtn'), 'modalSuggest', 'msCancel', () => {
+    document.getElementById('msStatus').textContent = '';
+  });
+  document.getElementById('msSend').addEventListener('click', () => {
+    const message = document.getElementById('msMsg').value.trim();
+    const st = document.getElementById('msStatus');
+    if (!message) { st.className = 'status err'; st.textContent = 'اكتب اقتراحك أولًا.'; return; }
+    sendFeedback({
+      type: 'suggestion',
+      message,
+      contact: document.getElementById('msContact').value.trim()
+    }, st, document.getElementById('msSend'), () => {
+      ['msMsg', 'msContact'].forEach(id => document.getElementById(id).value = '');
+      ms.close();
+    });
+  });
+
+  // 3) المشكلة ماتحلتش معايا (تبعت المحادثة كاملة)
+  const unsolvedBtn = document.getElementById('unsolvedBtn');
+  const mu = bindModal(unsolvedBtn, 'modalUnsolved', 'muCancel', () => {
+    document.getElementById('muStatus').textContent = '';
+  });
+
+  function buildConversation() {
+    return messages
+      .map(m => (m.role === 'user' ? 'العميل: ' : 'الفني: ') + (m.text || '') + (m.media ? ' [صورة]' : ''))
+      .join('\n\n')
+      .slice(0, 6000);
+  }
+
+  document.getElementById('muSend').addEventListener('click', () => {
+    sendFeedback({
+      type: 'unsolved',
+      brand: info.brand || '',
+      model: info.model || '',
+      message: document.getElementById('muMsg').value.trim(),
+      contact: document.getElementById('muContact').value.trim(),
+      conversation: buildConversation()
+    }, document.getElementById('muStatus'), document.getElementById('muSend'), () => {
+      ['muMsg', 'muContact'].forEach(id => document.getElementById(id).value = '');
+      mu.close();
+    });
+  });
+
+  // يظهر الزر بعد أول رد من الفني
+  function showUnsolved() { unsolvedBtn.style.display = 'block'; }
+
+  restartBtn.addEventListener('click', () => location.reload());
 </script>
 </body>
 </html>
