@@ -9,7 +9,7 @@
   .box { max-width:760px; margin:auto; background:#1e293b; padding:20px; border-radius:16px; }
   h1 { text-align:center; color:#38bdf8; margin-top:0; }
   label { display:block; margin:12px 0 6px; font-weight:bold; }
-  select, input, textarea, button { width:100%; padding:12px; border-radius:10px; font-size:16px; box-sizing:border-box; background:#0f172a; color:#e2e8f0; border:1px solid #334155; font-family:inherit; }
+  select, input, textarea, button { width:100%; padding:12px; border-radius:10px; font-size:16px; box-sizing:border-box; border:1px solid #334155; background:#0f172a; color:#e2e8f0; }
   textarea { min-height:100px; }
   button { background:#38bdf8; color:#0f172a; font-weight:bold; margin-top:16px; cursor:pointer; border:none; }
   button:disabled { opacity:.5; }
@@ -18,9 +18,14 @@
   .msg { max-width:85%; padding:10px 14px; border-radius:14px; margin:8px 0; line-height:1.8; white-space:pre-wrap; }
   .bot { background:#0f172a; border:1px solid #334155; margin-left:auto; }
   .me { background:#38bdf8; color:#0f172a; margin-right:auto; }
+  .msg img { max-width:100%; border-radius:10px; display:block; margin-bottom:6px; }
   #row { display:flex; gap:8px; margin-top:8px; }
   #row input { flex:1; }
   #row button { width:90px; margin-top:0; }
+  #camBtn { width:52px; margin-top:0; background:#334155; color:#e2e8f0; font-size:22px; padding:8px; }
+  #preview { display:none; align-items:center; gap:10px; margin-top:8px; }
+  #preview img { height:56px; border-radius:8px; }
+  #preview button { width:auto; margin-top:0; padding:6px 12px; background:#ef4444; color:#fff; }
 </style>
 </head>
 <body>
@@ -32,7 +37,7 @@
     <select id="brand"></select>
     <label>الموديل</label>
     <select id="model"></select>
-    <label>نظام التشغيل وإصداره (مثلاً أندرويد 15 أو iOS 18)</label>
+    <label>نظام التشغيل وإصداره (مثلًا أندرويد 15 أو iOS 18)</label>
     <input id="os" type="text" placeholder="اكتب إصدار النظام">
     <label>نوع العيب</label>
     <select id="fault"></select>
@@ -43,10 +48,13 @@
 
   <div id="chat">
     <div id="log"></div>
+    <div id="preview"><img id="previewImg" alt=""><button id="removeImg">إلغاء الصورة</button></div>
     <div id="row">
+      <button id="camBtn" title="ارفع صورة">📷</button>
       <input id="text" type="text" placeholder="اكتب ردك هنا...">
       <button id="send">إرسال</button>
     </div>
+    <input id="file" type="file" accept="image/*" style="display:none">
   </div>
 </div>
 
@@ -59,6 +67,11 @@
   const textEl = document.getElementById('text');
   const sendBtn = document.getElementById('send');
   const startBtn = document.getElementById('start');
+  const camBtn = document.getElementById('camBtn');
+  const fileEl = document.getElementById('file');
+  const previewBox = document.getElementById('preview');
+  const previewImg = document.getElementById('previewImg');
+  const removeImg = document.getElementById('removeImg');
 
   Object.keys(PHONES).forEach(b => brandEl.add(new Option(b, b)));
   FAULTS.forEach(f => faultEl.add(new Option(f, f)));
@@ -72,14 +85,65 @@
 
   let info = {};
   let messages = [];
+  let pendingImage = null;
 
-  function addMsg(text, who) {
+  function addMsg(text, who, imgSrc) {
     const d = document.createElement('div');
     d.className = 'msg ' + who;
-    d.textContent = text;
+    if (imgSrc) {
+      const im = document.createElement('img');
+      im.src = imgSrc;
+      d.appendChild(im);
+    }
+    if (text) d.appendChild(document.createTextNode(text));
     logEl.appendChild(d);
     logEl.scrollTop = logEl.scrollHeight;
   }
+
+  function shrinkImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          const max = 1024;
+          let w = img.width, h = img.height;
+          if (w > max || h > max) {
+            const r = Math.min(max / w, max / h);
+            w = Math.round(w * r);
+            h = Math.round(h * r);
+          }
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          const url = c.toDataURL('image/jpeg', 0.8);
+          resolve({ url, data: url.split(',')[1], mimeType: 'image/jpeg' });
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  camBtn.addEventListener('click', () => fileEl.click());
+  fileEl.addEventListener('change', async () => {
+    const f = fileEl.files[0];
+    if (!f) return;
+    try {
+      pendingImage = await shrinkImage(f);
+      previewImg.src = pendingImage.url;
+      previewBox.style.display = 'flex';
+    } catch (e) {
+      addMsg('معرفتش أقرأ الصورة، جرب صورة تانية.', 'bot');
+    }
+    fileEl.value = '';
+  });
+  removeImg.addEventListener('click', () => {
+    pendingImage = null;
+    previewBox.style.display = 'none';
+  });
 
   async function ask() {
     sendBtn.disabled = true;
@@ -117,10 +181,18 @@
 
   function send() {
     const t = textEl.value.trim();
-    if (!t || sendBtn.disabled) return;
+    if ((!t && !pendingImage) || sendBtn.disabled) return;
     textEl.value = '';
-    messages.push({ role: 'user', text: t });
-    addMsg(t, 'me');
+    const msg = { role: 'user', text: t || 'دي صورة المشكلة، حلللي إيه العطل والحل.' };
+    if (pendingImage) {
+      msg.image = { data: pendingImage.data, mimeType: pendingImage.mimeType };
+      addMsg(t, 'me', pendingImage.url);
+    } else {
+      addMsg(t, 'me');
+    }
+    messages.push(msg);
+    pendingImage = null;
+    previewBox.style.display = 'none';
     ask();
   }
   sendBtn.addEventListener('click', send);
