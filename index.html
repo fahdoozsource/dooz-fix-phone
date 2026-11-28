@@ -53,6 +53,7 @@
   }
   .head p { margin: 0; color: var(--muted); font-size: 14px; }
   label { display: block; margin: 14px 0 6px; font-weight: bold; font-size: 14px; color: var(--muted); }
+  .hint { margin: -2px 0 8px; font-size: 12.5px; color: var(--amber); line-height: 1.7; }
   select, input, textarea {
     width: 100%; padding: 13px 14px; font-size: 16px; font-family: inherit;
     color: var(--text); background: rgba(8, 12, 30, .75);
@@ -200,7 +201,8 @@
     <label for="fault">نوع العيب</label>
     <select id="fault"></select>
     <label for="desc">اشرح المشكلة بالتفصيل</label>
-    <textarea id="desc" placeholder="مثال: الشاشة اتغيرت وحساس المكالمات مش شغال..."></textarea>
+<div class="hint">اكتب أي حاجة حصلت للجهاز قبل العطل، بتساعدنا نحدد السبب بدقة.</div>
+<textarea id="desc" placeholder="مثال: الشاشة اتغيرت وحساس المكالمات مش شغال..."></textarea>
     <button id="start">ابدأ الكلام مع الفني</button>
     <div class="link-row">
       <button id="missingBtn" class="ghost-btn" type="button">مش لاقي موديلك؟</button>
