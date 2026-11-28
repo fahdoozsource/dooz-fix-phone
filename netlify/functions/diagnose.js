@@ -317,6 +317,22 @@ exports.handler = async (event) => {
   const fault = String(data.fault || 'غير محدد').slice(0, 120);
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
 
+    // === فحص البيانات المحلية أولاً ===
+  let localAnswer = null;
+  // افترض وجود كائنphonesData يحتوي على الأعطال والحلول مسجلة
+
+  if (typeof phonesData !== 'undefined' && phonesData[modelName]) {
+    const deviceProblems = phonesData[modelName];
+    if (deviceProblems[fault]) {
+      localAnswer = deviceProblems[fault];
+    }
+  }
+
+  if (localAnswer) {
+    return respond(200, { answer: localAnswer + '\n\n(تم التشخيص من قاعدة البيانات المحلية)', ended: false });
+  }
+  // ==========================================
+  
   const userMessages = rawMessages.filter((m) => m && m.role === 'user');
   const userCount = userMessages.length;
 
