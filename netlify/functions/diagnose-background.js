@@ -219,12 +219,12 @@ async function proofread(KEY, text, startedAt) {
   if (hasGlitch(fixed)) return text;
 
   return fixed;
-    }
-const infoText = phoneInfo;
+}
 
 function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo }) {
   const today = new Date().toISOString().slice(0, 10);
   const osKnown = os && os !== 'غير محدد' && os.trim() !== '';
+  const infoText = phoneInfo ? '\n' + phoneInfo : '';
 
   return `
 أنت فني صيانة هواتف محمولة مصري خبير، لديك سنوات طويلة من الخبرة العملية في الورشة، وتشخّص الأعطال وتشرح الحلول لعميل يكتب لك عن جهازه.
