@@ -19,6 +19,8 @@ const THANKS_REPLY = 'الشكر لله، تحت أمرك.';
 const FAREWELL = 'السلام عليكم ورحمة الله وبركاته.';
 const PRICE_TITLE = 'التكلفة التقريبية:';
 const PRICE_NOTE = 'الأسعار تقريبية وقد تختلف قليلًا من فني إلى آخر.';
+const PRICE_FAIL_NOTE =
+  'تعذر جلب الأسعار الحالية الآن، وتقدر تسأل فني صيانة قريب منك عن السعر النهائي، أو اسأل مرة أخرى بعد قليل.';
 
 // مصطلحات لاتينية قصيرة مسموحة (تمت إضافة ui و one لأسماء واجهات سامسونج مثل One UI)
 const LATIN_OK = new Set([
@@ -27,8 +29,6 @@ const LATIN_OK = new Set([
   'tv', 'id', 'vpn', 'apn', 'ime', 'imei', 'oled', 'wifi', 'wi-fi', 'type-c',
   'ui', 'one', 'miui', 'hyperos', 'coloros', 'oxygenos', 'realme', 'os', 'ota', 'adb', 'fastboot'
 ]);
-
-const PRICE_WORDS = /(سعر|اسعار|أسعار|تكلف|بكام|كام|مصنعي|ثمن)/;
 
 function sanitizeBase64(data) {
   if (typeof data !== 'string') return '';
@@ -44,16 +44,40 @@ function timeLeft(startedAt) {
   return TOTAL_BUDGET_MS - (Date.now() - startedAt);
 }
 
-// ===== هل رسالة العميل شكر فقط؟ =====
-function isThanksOnly(text) {
-  const t = String(text || '').trim();
-  if (!t || t.length > 60) return false;
-  const norm = t
+// ===== توحيد الكتابة العربية (للفهم فقط) =====
+function normalizeAr(text) {
+  return String(text || '')
     .replace(/[\u064B-\u0652\u0640]/g, '')
     .replace(/[إأآ]/g, 'ا')
     .replace(/ة/g, 'ه')
     .replace(/ى/g, 'ي')
     .toLowerCase();
+}
+
+// ===== هل العميل بيسأل عن السعر؟ (بأي صيغة) =====
+// أمثلة: سعرها كام، التكلفة كام، بكام القطعة، الصنايعي هياخد كام، المصنعية بكام، هدفع كام
+function isPriceQuestion(text) {
+  const norm = normalizeAr(text);
+  if (!norm) return false;
+
+  // كلمات واضحة جدًا في المعنى (تُفحص كجزء من الكلمة)
+  const STRONG = [
+    'سعر', 'اسعار', 'تكلف', 'تكاليف', 'يكلف', 'مصنعي', 'ثمن', 'فلوس',
+    'price', 'cost', 'how much'
+  ];
+  if (STRONG.some((w) => norm.includes(w))) return true;
+
+  // كلمات لازم تكون كلمة كاملة (بعد حذف حرف الواو أو الباء أو اللام من أولها)
+  const WORDS = new Set(['كام', 'اجره', 'اجر', 'هدفع', 'ادفع', 'هيدفع', 'يدفع', 'اتكلف', 'هتكلف']);
+  const tokens = norm.split(/[\s،,.؟?!:؛]+/).filter(Boolean);
+  return tokens.some((w) => WORDS.has(w) || WORDS.has(w.replace(/^[وبل]/, '')));
+}
+
+// ===== هل رسالة العميل شكر فقط؟ =====
+function isThanksOnly(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 60) return false;
+  const norm = normalizeAr(t);
   const hasThanks =
     /(شكرا|متشكر|مشكور|تسلم|يسلمو|جزاك|بارك الله|ربنا يكرمك|الله يكرمك|كتر خيرك|الف شكر|ربنا يبارك|thanks|thank you|thx)/.test(norm);
   if (!hasThanks) return false;
@@ -141,6 +165,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
         lastError =
           '[' + model + ' / ' + res.status + '] ' +
           ((json && json.error && json.error.message) || 'خطأ من جيميناي');
+        console.log('[gemini] error:', lastError, opts.search ? '(with search)' : '');
 
         // 404 أو 429: جرّب الموديل التالي. غير كده: وقف
         if (res.status === 404 || res.status === 429) break;
@@ -148,6 +173,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
       } catch (e) {
         lastError =
           e && e.name === 'TimeoutError' ? TIMEOUT_MSG : 'تعذر الاتصال بجيميناي';
+        console.log('[gemini] exception:', model, e && e.name, e && e.message);
       }
 
       if (attempt < attempts) await sleep(300 * attempt);
@@ -167,33 +193,55 @@ function extractAnswer(json) {
 }
 
 // ===== بحث الأسعار (يشتغل فقط لما العميل يسأل عن السعر) =====
+// بيجرّب الموديلين واحد ورا التاني، وبيطبع في اللوج سبب أي فشل
 async function lookupPrices(KEY, startedAt, ctx) {
   const prompt =
-    'ابحث عن الأسعار الحالية في السوق المصرية بالجنيه المصري.\n' +
+    'ابحث في الإنترنت الآن عن الأسعار الحالية في السوق المصرية بالجنيه المصري.\n' +
     'الجهاز: ' + ctx.brand + ' ' + ctx.modelName + '\n' +
     'نوع العيب: ' + ctx.fault + '\n' +
-    'كلام العميل: ' + ctx.lastText.slice(0, 300) + '\n\n' +
-    'المطلوب: سطر لسعر قطعة الغيار المحتملة لهذا الموديل (رقم واحد تقريبي لكل جودة إن وجدت: أصلي أو تجاري)، ' +
-    'وسطر لأجر المصنعية المعتاد لهذا العطل. إذا كان العطل يُحل بإعدادات أو سوفت وير فاكتب: مجاني. ' +
-    'اكتب أرقامًا فقط وبحد أقصى 4 أسطر قصيرة بدون شرح. إذا لم تجد سعرًا موثوقًا اكتب: غير متاح.';
+    (ctx.desc ? 'وصف العميل: ' + ctx.desc.slice(0, 300) + '\n' : '') +
+    (ctx.lastBotText ? 'آخر تشخيص قدمه الفني للعميل: ' + ctx.lastBotText.slice(0, 600) + '\n' : '') +
+    'سؤال العميل الآن: ' + ctx.lastText.slice(0, 300) + '\n\n' +
+    'المطلوب بالضبط ثلاثة أسطر قصيرة، وفي كل سطر رقم واحد تقريبي فقط بدون مدى (لا تكتب من كذا إلى كذا):\n' +
+    'قطعة الغيار: (سعر القطعة المناسبة لهذا الموديل والعطل) جنيه\n' +
+    'المصنعية: (أجر الفني لتركيبها أو لإصلاح هذا العطل) جنيه\n' +
+    'الإجمالي التقريبي: (المجموع) جنيه\n' +
+    'إذا كان في التشخيص أكثر من عطل فاحسب للعطل الأرجح فقط.\n' +
+    'إذا كان العطل يُحل بإعدادات أو سوفت وير فاكتب سطرًا واحدًا فقط: مجاني.\n' +
+    'اكتب الأرقام فقط بدون شرح. إذا لم تجد سعرًا موثوقًا اكتب: غير متاح.';
 
   const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }] };
 
-  const r = await callGemini(KEY, body, startedAt, {
-    models: FAST_MODELS,
-    attempts: 1,
-    timeoutMs: 12000,
-    maxTokens: 300,
-    search: true
-  });
-  if (!r.ok) return '';
+  console.log('[prices] lookup start:', ctx.brand, ctx.modelName, '/', ctx.fault);
 
-  const t = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
-  if (!t || (/غير متاح/.test(t) && t.length < 20)) return '';
-  return t.slice(0, 600);
+  for (const m of MODELS) {
+    if (timeLeft(startedAt) < 4000) break;
+
+    const r = await callGemini(KEY, body, startedAt, {
+      models: [m],
+      attempts: 1,
+      timeoutMs: 14000,
+      maxTokens: 400,
+      search: true
+    });
+
+    if (!r.ok) {
+      console.log('[prices] failed on', m, '->', r.error);
+      continue;
     }
 
-function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo }) {
+    const t = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
+    console.log('[prices] raw from', m, ':', t.slice(0, 200));
+
+    if (!t || (/غير متاح/.test(t) && t.length < 20)) continue;
+    return t.slice(0, 600);
+  }
+
+  console.log('[prices] no usable result');
+  return '';
+}
+
+function buildSystemPrompt({ brand, modelName, os, fault, desc, isFirstReply, phoneInfo }) {
   const today = new Date().toISOString().slice(0, 10);
   const osKnown = os && os !== 'غير محدد' && os.trim() !== '';
   const infoText = phoneInfo ? '\n' + phoneInfo : '';
@@ -206,8 +254,17 @@ function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInf
 - الموديل: ${modelName}
 - إصدار النظام: ${osKnown ? os : 'لم يحدده العميل'}
 - نوع العيب: ${fault}
+- وصف العميل بكلامه: ${desc || 'لم يكتب وصفًا'}
 - تاريخ اليوم: ${today}
 ${infoText}
+
+قراءة بيانات العميل (مهم جدًا):
+- نوع العيب المختار ووصف العميل المكتوب مصدر واحد للمعلومات، فاقرأ الاثنين معًا واعتمد عليهما معًا.
+- قد يتكلم الوصف عن عطل مختلف عن العيب المختار، أو عن عطلين معًا. في هذه الحالة تناول كل عطل منهما، ولا تتجاهل أي واحد، ووزّع الأسباب بينهما مع الالتزام بحد الكلمات.
+- لا تبدأ بأسباب جاهزة من عندك. ابنِ الأسباب على ما قاله العميل بالضبط.
+- إذا ذكر العميل أنه جرّب شيئًا، مثل تغيير قطعة أو إعادة تشغيل أو تحديث، وما زال العطل موجودًا، فاستبعد الأسباب التي تتناقض مع ذلك، وابدأ بالأسباب التي ما زالت محتملة بعده.
+- لا تفترض معلومة لم يذكرها العميل. إذا كانت المعلومة ناقصة وتغيّر التشخيص، فاسأل عنها في سؤالك الأخير.
+- ابدأ ردك بالمشكلة الأقرب لما كتبه العميل في الوصف، ثم الباقي حسب الاحتمال.
 
 معرفتك بالجهاز والنظام:
 - اعتمد على معرفتك بهذا الموديل بالتحديد: مواصفاته، وواجهة النظام عليه، وأعطاله الشائعة.
@@ -265,7 +322,7 @@ ${
 }
 
 الأسعار:
-- لا تذكر أي أسعار أو تكلفة أو مصنعية في ردك أبدًا، ولا تسأل العميل هل يريد معرفة التكلفة، ولا تعرض عليه ذلك. إذا سأل العميل عن السعر فسيضيف النظام قسم التكلفة تلقائيًا بعد ردك، فقل فقط إن التكلفة التقريبية مكتوبة في نهاية الرد.
+- لا تذكر أي أسعار أو تكلفة أو مصنعية في ردك أبدًا، ولا تسأل العميل هل يريد معرفة التكلفة، ولا تعرض عليه ذلك. إذا سأل العميل عن السعر أو التكلفة بأي صيغة فسيضيف النظام قسم التكلفة تلقائيًا بعد ردك، فاكتب جملة واحدة فقط: التكلفة التقريبية مكتوبة في نهاية الرد.
 
 الصور:
 - إذا أرسل العميل صورة فحللها، وقل أين المشكلة وما سببها وما الحل، واقرأ أي رسالة خطأ ظاهرة فيها.
@@ -291,6 +348,7 @@ async function run(data) {
   const modelName = String(data.model || 'غير محدد').slice(0, 100);
   const os = String(data.os || '').trim().slice(0, 80) || 'غير محدد';
   const fault = String(data.fault || 'غير محدد').slice(0, 120);
+  const desc = String(data.desc || '').trim().slice(0, 1000);
   const phoneInfo = getPhoneInfo(brand, modelName);
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
 
@@ -324,10 +382,21 @@ async function run(data) {
 
   const lastText = String((lastUser && lastUser.text) || '');
 
-  // الأسعار: فقط لما العميل يسأل عن السعر (مش في الرد الأول)
-  const needPrices = !isFirstReply && PRICE_WORDS.test(lastText);
+  // آخر رد قدمه الفني (عشان بحث الأسعار يعرف إحنا بنتكلم عن أنهي عطل)
+  let lastBotText = '';
+  for (let i = rawMessages.length - 1; i >= 0; i--) {
+    const m = rawMessages[i];
+    if (m && m.role !== 'user' && typeof m.text === 'string' && m.text.trim()) {
+      lastBotText = m.text.trim();
+      break;
+    }
+  }
 
-  const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo });
+  // الأسعار: فقط لما العميل يسأل عن السعر بأي صيغة (مش في الرد الأول)
+  const needPrices = !isFirstReply && isPriceQuestion(lastText);
+  console.log('[run] userCount=', userCount, 'needPrices=', needPrices, 'text=', lastText.slice(0, 80));
+
+  const system = buildSystemPrompt({ brand, modelName, os, fault, desc, isFirstReply, phoneInfo });
 
   const history = rawMessages.map((m) => {
     const parts = [];
@@ -360,7 +429,10 @@ async function run(data) {
 
   // بحث الأسعار بالتوازي مع الرد، لكن فقط لما العميل يسأل
   const pricePromise = needPrices
-    ? lookupPrices(KEY, startedAt, { brand, modelName, fault, lastText }).catch(() => '')
+    ? lookupPrices(KEY, startedAt, { brand, modelName, fault, desc, lastText, lastBotText }).catch((e) => {
+        console.log('[prices] exception:', e && e.message);
+        return '';
+      })
     : Promise.resolve('');
 
   const [result, priceNotes] = await Promise.all([
@@ -379,9 +451,13 @@ async function run(data) {
   if (!answer) answer = 'لا توجد إجابة الآن، حاول مرة أخرى.';
 
   // إضافة قسم التكلفة (فقط لو العميل سأل)
-  if (priceNotes) {
-    const prices = cleanAnswer(priceNotes, brand, modelName, os);
-    if (prices) answer = answer + '\n\n' + PRICE_TITLE + '\n' + prices + '\n' + PRICE_NOTE;
+  if (needPrices) {
+    const prices = priceNotes ? cleanAnswer(priceNotes, brand, modelName, os) : '';
+    if (prices) {
+      answer = answer + '\n\n' + PRICE_TITLE + '\n' + prices + '\n' + PRICE_NOTE;
+    } else {
+      answer = answer + '\n\n' + PRICE_FAIL_NOTE;
+    }
   }
 
   // التحية بتتحط من الكود نفسه، فتطلع زي ما هي بالحرف
@@ -416,6 +492,7 @@ exports.handler = async (event) => {
   try {
     out = await run(data);
   } catch (e) {
+    console.log('[run] unexpected error:', e && e.message);
     out = { error: 'حدث خطأ غير متوقع، حاول مرة أخرى.' };
   }
 
