@@ -1,13 +1,15 @@
-// دالة الخلفية: مهلتها 15 دقيقة، فكل الميزات تشتغل بدون قطع
-// بترد فورًا بـ 202، وتحفظ النتيجة في Netlify Blobs، والصفحة تسأل عنها بعدين
+// دالة الخلفية: بترد فورًا بـ 202، وتحفظ النتيجة في Netlify Blobs، والصفحة تسأل عنها بعدين
 const { connectLambda, getStore } = require('@netlify/blobs');
 const { getPhoneInfo } = require('./phone-data');
-const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+
+// الموديل الخفيف أولًا للسرعة، والكبير احتياطي فقط لو فشل
+const MODELS = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
 const FAST_MODELS = ['gemini-3.5-flash-lite'];
 const MAX_USER_MESSAGES = 6; // الرسالة الأولى + 5 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
 const MAX_TEXT_LENGTH = 2000;
-const TOTAL_BUDGET_MS = 100000; // مهلة سخية لأن الدالة في الخلفية
+const TOTAL_BUDGET_MS = 30000; // ميزانية قصيرة عشان الرد يطلع بسرعة
+const MAIN_TIMEOUT_MS = 15000; // مهلة المحاولة الواحدة
 const TIMEOUT_MSG = 'استغرق الرد وقتًا أطول من المعتاد، حاول مرة أخرى.';
 
 // ===== النصوص الثابتة (عدّلها من هنا) =====
@@ -59,7 +61,7 @@ function isThanksOnly(text) {
   return !hasMore && words.length <= 6;
 }
 
-// ===== كشف حروف لاتينية ملتصقة بالعربي (عطل في توليد النص) =====
+// ===== كشف حروف لاتينية ملتصقة بالعربي =====
 function hasGlitch(text) {
   return /[\u0600-\u06FF][A-Za-z]|[A-Za-z][\u0600-\u06FF]/.test(text);
 }
@@ -91,17 +93,17 @@ function cleanAnswer(text, brand, modelName, os) {
 }
 
 // ===== الاتصال بجيميناي =====
-// opts: { models, attempts, timeoutMs, search }
+// opts: { models, attempts, timeoutMs, search, maxTokens }
 async function callGemini(KEY, body, startedAt, opts = {}) {
   const models = opts.models || MODELS;
-  const attempts = opts.attempts || 2;
-  const maxTimeout = opts.timeoutMs || 60000;
+  const attempts = opts.attempts || 1;
+  const maxTimeout = opts.timeoutMs || MAIN_TIMEOUT_MS;
   let lastError = 'خطأ غير معروف';
 
   for (const model of models) {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const remaining = timeLeft(startedAt);
-      if (remaining < 4000) return { ok: false, error: TIMEOUT_MSG };
+      if (remaining < 3000) return { ok: false, error: TIMEOUT_MSG };
 
       try {
         const url =
@@ -110,13 +112,21 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
           ':generateContent?key=' +
           encodeURIComponent(KEY);
 
-        const payload = opts.search ? { ...body, tools: [{ google_search: {} }] } : body;
+        let payload = {
+          ...body,
+          generationConfig: {
+            maxOutputTokens: opts.maxTokens || 1000,
+            temperature: 0.4,
+            thinkingConfig: { thinkingBudget: 0 }
+          }
+        };
+        if (opts.search) payload = { ...payload, tools: [{ google_search: {} }] };
 
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(Math.min(remaining - 1000, maxTimeout))
+          signal: AbortSignal.timeout(Math.min(remaining - 500, maxTimeout))
         });
 
         let json = {};
@@ -132,6 +142,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
           '[' + model + ' / ' + res.status + '] ' +
           ((json && json.error && json.error.message) || 'خطأ من جيميناي');
 
+        // 404 أو 429: جرّب الموديل التالي. غير كده: وقف
         if (res.status === 404 || res.status === 429) break;
         if (res.status < 500) return { ok: false, error: lastError };
       } catch (e) {
@@ -139,7 +150,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
           e && e.name === 'TimeoutError' ? TIMEOUT_MSG : 'تعذر الاتصال بجيميناي';
       }
 
-      if (attempt < attempts) await sleep(600 * attempt);
+      if (attempt < attempts) await sleep(300 * attempt);
     }
   }
   return { ok: false, error: lastError };
@@ -169,9 +180,10 @@ async function lookupPrices(KEY, startedAt, ctx) {
   const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }] };
 
   const r = await callGemini(KEY, body, startedAt, {
-    models: [MODELS[0]],
+    models: FAST_MODELS,
     attempts: 1,
-    timeoutMs: 30000,
+    timeoutMs: 12000,
+    maxTokens: 300,
     search: true
   });
   if (!r.ok) return '';
@@ -179,46 +191,6 @@ async function lookupPrices(KEY, startedAt, ctx) {
   const t = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
   if (!t || (/غير متاح/.test(t) && t.length < 20)) return '';
   return t.slice(0, 600);
-}
-
-// ===== تدقيق إملائي (للرد الأول فقط، ومعطّل افتراضيًا) =====
-const ENABLE_PROOFREAD = false;
-
-const PROOF_PROMPT =
-  'أنت مدقق لغوي للعربية. ستصلك رسالة بالعامية المصرية المبسطة. ' +
-  'صحح فقط الأخطاء الإملائية، والكلمات المشوهة أو الناقصة أو المكررة، وأي حروف لاتينية ملتصقة بكلمات عربية. ' +
-  'لا تغيّر المعنى ولا الأرقام ولا ترتيب الخطوات ولا الأسلوب، ولا تضف شيئًا ولا تحذف جملة. ' +
-  'أعد النص المصحح فقط بدون أي شرح أو علامات تنسيق.';
-
-function numbersOf(t) {
-  return (String(t).match(/\d+/g) || []).join(',');
-}
-
-async function proofread(KEY, text, startedAt) {
-  if (!ENABLE_PROOFREAD) return text;
-  if (timeLeft(startedAt) < 10000) return text;
-
-  const body = {
-    systemInstruction: { parts: [{ text: PROOF_PROMPT }] },
-    contents: [{ role: 'user', parts: [{ text }] }]
-  };
-
-  const r = await callGemini(KEY, body, startedAt, {
-    models: FAST_MODELS,
-    attempts: 1,
-    timeoutMs: 20000
-  });
-  if (!r.ok) return text;
-
-  const fixed = extractAnswer(r.json).replace(/[*#`]+/g, '').trim();
-  if (!fixed) return text;
-
-  const ratio = fixed.length / text.length;
-  if (ratio < 0.8 || ratio > 1.25) return text;
-  if (numbersOf(fixed) !== numbersOf(text)) return text;
-  if (hasGlitch(fixed)) return text;
-
-  return fixed;
 }
 
 function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo }) {
@@ -237,54 +209,52 @@ function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInf
 - تاريخ اليوم: ${today}
 ${infoText}
 
-معرفتك بالجهاز والنظام (مهم جدًا):
+معرفتك بالجهاز والنظام:
 - اعتمد على معرفتك بهذا الموديل بالتحديد: مواصفاته، وواجهة النظام عليه، وأعطاله الشائعة.
-- أسماء القوائم ومسارات الإعدادات تختلف من ماركة إلى أخرى ومن إصدار إلى آخر، مثل One UI في سامسونج وMIUI أو HyperOS في شاومي وColorOS في أوبو. اشرح الخطوات بالمسار الصحيح لهذا الجهاز بالذات، واذكر المسار بالترتيب كما يظهر للعميل.
-- إذا كان إصدار النظام غير محدد، فاستنتج من الموديل المدى المنطقي للإصدارات التي يعمل عليها، وتعامل على أساسه، وإذا اختلف المسار بين إصدارين فاذكر المسارين باختصار. لا تسأل العميل عن إصدار النظام.
-- إذا كان الجهاز لا يدعم ميزة أو إصدارًا معينًا فقل ذلك بوضوح.
+- اشرح خطوات الإعدادات بالمسار الصحيح لهذا الجهاز بالذات، بالترتيب كما يظهر للعميل.
+- إذا كان إصدار النظام غير محدد فاستنتجه من الموديل، ولا تسأل العميل عنه.
+- إذا كان الجهاز لا يدعم ميزة معينة فقل ذلك بوضوح.
 
 أسلوب الكتابة (مهم جدًا):
 - اكتب بعامية مصرية مبسطة وواضحة وقريبة من الفصحى، بجمل قصيرة ومنطقية، وبإملاء عربي سليم 100%.
-- التزم بالهمزات والتاء المربوطة والألف المقصورة والتنوين الصحيحة، مثل: أولًا، ثانيًا، ثالثًا، رابعًا، خامسًا، إذا، إلى، مثلًا، غالبًا، فعلًا، لأن، أيضًا.
-- استخدم كلمات عربية معروفة فقط. لا تخترع كلمات، ولا تكتب كلمات ناقصة أو مشوهة أو مقطوعة أو مكررة.
-- المصطلحات الفنية اكتبها بهذه الصيغ: الشاشة، التاتش، حساس القرب (حساس المكالمات)، اللوحة الأم (البوردة)، منفذ الشحن، الشاحن، البطارية، السماعة، الميكروفون، الكاميرا، الشريحة، الهارد وير، السوفت وير، قطعة الغيار، المصنعية، السيليكون الحراري، الفلاتة.
+- التزم بالهمزات والتاء المربوطة والألف المقصورة والتنوين الصحيحة، مثل: أولًا، ثانيًا، ثالثًا، رابعًا، إذا، إلى، مثلًا، غالبًا، لأن، أيضًا.
+- استخدم كلمات عربية معروفة فقط. لا تخترع كلمات، ولا تكتب كلمات ناقصة أو مشوهة أو مكررة.
+- المصطلحات الفنية اكتبها بهذه الصيغ: الشاشة، التاتش، حساس القرب، اللوحة الأم (البوردة)، منفذ الشحن، الشاحن، البطارية، السماعة، الميكروفون، الكاميرا، الشريحة، الهارد وير، السوفت وير، قطعة الغيار، المصنعية، السيليكون الحراري، الفلاتة.
 - ممنوع تمامًا إدخال أي حروف إنجليزية داخل الكلمات العربية أو ملتصقة بها. الحروف اللاتينية مسموحة فقط لأسماء الأجهزة والأنظمة والمصطلحات المعيارية مثل Android وiOS وUSB وType-C وWi-Fi وSIM وOLED وLCD وIC وIMEI، وتُكتب منفصلة بمسافة عن الكلمات العربية.
-- ممنوع العناوين والرموز والنجوم والجداول والقوائم النقطية. رتّب الخطوات بكلمات مثل: أولًا، ثانيًا، ثالثًا.
-- قبل أن تنهي ردك راجع كل جملة، وتأكد من سلامة الإملاء ومن أن الكلام منطقي ودقيق فنيًا.
+- ممنوع العناوين والرموز والنجوم والجداول والقوائم النقطية.
 
 أسلوب الرد:
-- لا تبدأ أي رد بترحيب أو مجاملة أو نداء، مثل: أهلًا، يا باشا، يا غالي، بص يا سيدي. ابدأ بالمعلومة أو الحل مباشرة.
+- لا تبدأ أي رد بترحيب أو مجاملة أو نداء، مثل: أهلًا، يا باشا، يا غالي. ابدأ بالمعلومة أو الحل مباشرة.
 - لا تعِد كلام العميل ولا تلخص سؤاله، وأجب مباشرة.
 - لا تضف عبارات مجاملة في آخر الرد.
-- اعتمد على خبرة عميقة وحلول نهائية قابلة للتنفيذ، وليس على كلام عام.
+- اعتمد على حلول نهائية قابلة للتنفيذ وليس على كلام عام.
 
 ${
   isFirstReply
     ? `
-هذا هو الرد الأول. سيضيف النظام الترحيب تلقائيًا قبل ردك، لذلك لا تكتب أي ترحيب أو سلام، وابدأ مباشرة بالعطل وحله. يجب أن يكون الرد كاملًا ومفصلًا في رسالة واحدة:
-أولًا: اذكر الأسباب المحتملة للمشكلة من الأكثر احتمالًا إلى الأقل.
-ثانيًا: لكل سبب يُحل في البيت، اشرح الحل خطوة خطوة وبالترتيب: الدخول على أي إعدادات، والضغط على ماذا، ثم ماذا، بالمسار الصحيح لهذا الجهاز.
-ثالثًا: لكل سبب يحتاج ورشة، اشرح للعميل مكان العطل بالضبط وما الذي سيغيّره أو يصلحه الفني، مثل: فلاتة ناقصة أو تالفة، أو لحام مكسور في اللوحة الأم، أو شاشة أو بطارية أو منفذ شحن يحتاج استبدال، ونبّه أن الجهاز سيُفتح وأن هذا عمل ورش متخصصة.
-رابعًا: وضّح ما يُجرَّب بعد ذلك إذا لم ينجح الحل الأول، وما الحل النهائي إذا فشلت كل الحلول.
-خامسًا: وضّح أي حل يصلح في البيت وأي حل يحتاج ورشة، ودرجة خطورة العطل باختصار.
+هذا هو الرد الأول. سيضيف النظام التحية تلقائيًا، فلا تكتب أي ترحيب أو سلام. ابدأ فورًا بالأسباب.
+اذكر من ثلاثة إلى أربعة أسباب محتملة للعطل من الأكثر احتمالًا إلى الأقل، واكتب كل سبب ومعه حله مباشرة في نفس الفقرة، بهذه الصيغة: السبب الأول كذا، ويُحل بكذا. ثم السبب الثاني كذا، ويُحل بكذا. وهكذا.
+اكتب السبب وحله في جملتين أو ثلاث بحد أقصى. إذا كان الحل منزليًا فاذكر خطواته المختصرة بالمسار الصحيح لهذا الجهاز. وإذا كان يحتاج ورشة فاذكر ما سيفعله الفني بالضبط، ونبّه أن الجهاز سيُفتح.
+اجعل الرد كله في حدود 200 كلمة.
+في آخر الرد اسأل سؤالًا واحدًا فقط في صلب المشكلة، تختاره أنت حسب العطل، مثل: هل حصل للجهاز سقوط أو تعرض لمياه قبل ظهور العطل؟ أو: متى ظهر العطل وهل حدث بعد تحديث أو تركيب شيء؟
 لا تطلب صورة ولا فيديو في الرد الأول.
 `
     : `
 هذا رد متابعة: لا ترحيب ولا مجاملة، وأجب مباشرة على ما كتبه العميل.
-- اجعل الرد قصيرًا من 3 إلى 6 أسطر.
-- افهم من كلام العميل، ثم أكّد سببًا أو استبعده.
-- اسأل سؤال متابعة واحدًا فقط عند الحاجة، مثل: ماذا جربت؟ متى ظهر العطل؟ هل تظهر رسالة خطأ؟ هل يمكنك تصويره؟
-- عند الوصول إلى تشخيص واضح: اذكر السبب المرجح، ثم الحل النهائي. إذا كان الحل في البيت فاشرح خطواته واحدة واحدة، وقل له: إذا نجحت الخطوات فالمشكلة انتهت، وإذا لم تنجح فالحل في الورشة. وإذا كان الحل في الورشة فاشرح ما سيفعله الفني بالضبط.
+- اجعل الرد قصيرًا من 3 إلى 5 أسطر.
+- أكّد سببًا أو استبعده بناءً على كلام العميل.
+- اسأل سؤال متابعة واحدًا فقط عند الحاجة.
+- عند الوصول إلى تشخيص واضح: اذكر السبب المرجح ثم الحل النهائي. إذا كان الحل في البيت فاشرح خطواته، وقل له: إذا نجحت الخطوات فالمشكلة انتهت، وإذا لم تنجح فالحل في الورشة. وإذا كان في الورشة فاشرح ما سيفعله الفني بالضبط.
 - لا تكرر حلولًا ذكرتها من قبل.
+- إذا لم تستطع الوصول للمشكلة بالكلام فاطلب منه فيديو قصيرًا أو صورة أوضح.
 `
 }
 
 الأسعار:
-- لا تذكر أي أسعار أو تكلفة أو مصنعية في ردك أبدًا، ولا تسأل العميل هل يريد معرفة التكلفة. إذا سأل العميل عن السعر، فسيضيف النظام قسم التكلفة تلقائيًا بعد ردك، فقل فقط إن التكلفة التقريبية مكتوبة في نهاية الرد.
+- لا تذكر أي أسعار أو تكلفة أو مصنعية في ردك أبدًا، ولا تسأل العميل هل يريد معرفة التكلفة. إذا سأل العميل عن السعر فسيضيف النظام قسم التكلفة تلقائيًا بعد ردك، فقل فقط إن التكلفة التقريبية مكتوبة في نهاية الرد.
 
-الصور والفيديو:
-- قد يرسل العميل صورة في أي وقت. إذا أرسلها فحللها، وقل أين المشكلة وما سببها وما الحل، واقرأ أي رسالة خطأ أو كود ظاهر فيها.
-- إذا لم تستطع الوصول للمشكلة بالكلام فاطلب منه فيديو قصيرًا أو صورة أوضح.
+الصور:
+- إذا أرسل العميل صورة فحللها، وقل أين المشكلة وما سببها وما الحل، واقرأ أي رسالة خطأ ظاهرة فيها.
 - إذا كان العطل واضحًا بالكلام فلا تطلب صورة.
 
 قواعد عامة:
@@ -369,12 +339,12 @@ async function run(data) {
     contents: history
   };
 
-  // الرد الأول: الموديل الكبير ثم الاحتياطي. المتابعة: الموديل السريع فقط.
+  // الرد الأول: الخفيف ثم الكبير احتياطي. المتابعة: الخفيف فقط.
   const mainOpts = isFirstReply
-    ? {}
-    : { models: FAST_MODELS, attempts: 1, timeoutMs: 40000 };
+    ? { models: MODELS, attempts: 1, timeoutMs: MAIN_TIMEOUT_MS, maxTokens: 1000 }
+    : { models: FAST_MODELS, attempts: 1, timeoutMs: 12000, maxTokens: 500 };
 
-  // بحث الأسعار يشتغل بالتوازي مع الرد، لكن فقط لما العميل يسأل
+  // بحث الأسعار بالتوازي مع الرد، لكن فقط لما العميل يسأل
   const pricePromise = needPrices
     ? lookupPrices(KEY, startedAt, { brand, modelName, fault, lastText }).catch(() => '')
     : Promise.resolve('');
@@ -390,19 +360,9 @@ async function run(data) {
 
   let answer = extractAnswer(result.json);
 
-  // لو ظهرت حروف لاتينية ملتصقة بالعربي في الرد الأول فقط، أعد المحاولة مرة واحدة
-  if (isFirstReply && hasGlitch(answer) && timeLeft(startedAt) > 30000) {
-    const retry = await callGemini(KEY, body, startedAt, { attempts: 1 });
-    if (retry.ok) {
-      const retryAnswer = extractAnswer(retry.json);
-      if (retryAnswer && !hasGlitch(retryAnswer)) answer = retryAnswer;
-    }
-  }
-
+  // تنظيف الحروف اللاتينية الغريبة بدل إعادة المحاولة (أسرع)
   answer = cleanAnswer(answer, brand, modelName, os);
   if (!answer) answer = 'لا توجد إجابة الآن، حاول مرة أخرى.';
-
-  if (isFirstReply) answer = await proofread(KEY, answer, startedAt);
 
   // إضافة قسم التكلفة (فقط لو العميل سأل)
   if (priceNotes) {
@@ -410,6 +370,7 @@ async function run(data) {
     if (prices) answer = answer + '\n\n' + PRICE_TITLE + '\n' + prices + '\n' + PRICE_NOTE;
   }
 
+  // التحية بتتحط من الكود نفسه، فتطلع زي ما هي بالحرف
   if (isFirstReply) answer = WELCOME + '\n\n' + answer;
   if (ended) answer = answer + '\n\n' + FAREWELL;
 
