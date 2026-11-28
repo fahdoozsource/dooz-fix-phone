@@ -395,7 +395,7 @@
 
 function showThinking() {
   const isFirst = messages.filter(function (m) { return m.role === 'user'; }).length <= 1;
-  const expected = isFirst ? 60 : 15;
+  const expected = isFirst ? 15 : 15;
 
   thinkingEl = document.createElement('div');
   thinkingEl.className = 'msg bot thinking';
