@@ -1,7 +1,7 @@
 // دالة الخلفية: مهلتها 15 دقيقة، فكل الميزات تشتغل بدون قطع
 // بترد فورًا بـ 202، وتحفظ النتيجة في Netlify Blobs، والصفحة تسأل عنها بعدين
 const { connectLambda, getStore } = require('@netlify/blobs');
-
+const { getPhoneInfo } = require('./phone-data');
 const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 const FAST_MODELS = ['gemini-3.5-flash-lite'];
 const MAX_USER_MESSAGES = 6; // الرسالة الأولى + 5 رسائل متابعة
