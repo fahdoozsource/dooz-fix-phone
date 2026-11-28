@@ -1,6 +1,6 @@
 // النسخة المتوازية: بحث الأسعار وكتابة الرد يشتغلان في نفس الوقت، ثم التدقيق الإملائي
 // الموديل الأقوى أولًا، والأخف احتياطي لو الأول فشل
-const MODELS = ['gemini-1.5-flash', 'gemini-3.5-flash-lite'];
+const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 const PROOF_MODELS = ['gemini-3.5-flash-lite'];
 const MAX_USER_MESSAGES = 6; // الرسالة الأولى + 5 رسائل متابعة
 const MAX_IMAGES_PER_SESSION = 5;
