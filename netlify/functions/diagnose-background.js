@@ -220,7 +220,7 @@ async function proofread(KEY, text, startedAt) {
 
   return fixed;
     }
-function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply }) {
+function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo }) {
   const today = new Date().toISOString().slice(0, 10);
   const osKnown = os && os !== 'غير محدد' && os.trim() !== '';
 
@@ -233,6 +233,7 @@ function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply }) {
 - إصدار النظام: ${osKnown ? os : 'لم يحدده العميل'}
 - نوع العيب: ${fault}
 - تاريخ اليوم: ${today}
+${phoneInfo ? معلومات من قاعدة بيانات الورشة عن الجهاز ده: ${phoneInfo} استخدم المعلومات دي أولاً. اللي مكتوب مؤكد قوله بثقة، واللي مكتوب مذكور في الشكاوي قوله مع تنبيه إنه غير مؤكد. : ''}
 
 معرفتك بالجهاز والنظام (مهم جدًا):
 - اعتمد على معرفتك بهذا الموديل بالتحديد: مواصفاته، وواجهة النظام عليه، وأعطاله الشائعة.
@@ -304,6 +305,7 @@ async function run(data) {
   const modelName = String(data.model || 'غير محدد').slice(0, 100);
   const os = String(data.os || '').trim().slice(0, 80) || 'غير محدد';
   const fault = String(data.fault || 'غير محدد').slice(0, 120);
+  const phoneInfo = getPhoneInfo(brand, modelName);
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
 
   const userMessages = rawMessages.filter((m) => m && m.role === 'user');
@@ -339,7 +341,7 @@ async function run(data) {
   // الأسعار: فقط لما العميل يسأل عن السعر (مش في الرد الأول)
   const needPrices = !isFirstReply && PRICE_WORDS.test(lastText);
 
-  const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply });
+  const system = buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo });
 
   const history = rawMessages.map((m) => {
     const parts = [];
