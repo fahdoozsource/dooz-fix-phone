@@ -226,7 +226,7 @@
     </div>
     <div id="ended">
       <h3>خلصت المحادثة</h3>
-      <p>لو لسه محتاج مساعدة، ابدأ مشكلة جديدة أو زور الورشة.</p>
+      <p>لو لسه محتاج مساعدة، ابدأ مشكلة جديدة.</p>
       <button id="restart" type="button">ابدأ من جديد</button>
     </div>
     <input id="file" type="file" accept="image/*" style="display:none">
@@ -422,7 +422,7 @@ function showThinking() {
   tick();
   thinkTimer = setInterval(tick, 1000);
 }
-
+  
 function hideThinking() {
   if (thinkTimer) { clearInterval(thinkTimer); thinkTimer = null; }
   if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
@@ -555,9 +555,6 @@ async function askDiagnose(payload) {
       messages.push({ role: 'model', text: answer });
       addMsg(answer, 'bot');
       showUnsolved();
-if (followups < MAX_FOLLOWUPS) {
-  addMsg('لو عايز تعرف السعر اكتب: السعر كام؟ أو لو عندك معلومة زيادة عن العطل اكتبها وهرد عليك بسرعة.', 'bot');
-}
 if (followups >= MAX_FOLLOWUPS) {
   endChat();
 }
