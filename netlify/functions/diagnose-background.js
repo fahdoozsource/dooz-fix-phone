@@ -116,8 +116,7 @@ async function callGemini(KEY, body, startedAt, opts = {}) {
           ...body,
           generationConfig: {
             maxOutputTokens: opts.maxTokens || 1000,
-            temperature: 0.4,
-            thinkingConfig: { thinkingBudget: 0 }
+            temperature: 0.4
           }
         };
         if (opts.search) payload = { ...payload, tools: [{ google_search: {} }] };
