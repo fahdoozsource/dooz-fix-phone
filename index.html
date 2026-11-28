@@ -391,16 +391,40 @@
     return d;
   }
 
-  function showThinking() {
-    thinkingEl = document.createElement('div');
-    thinkingEl.className = 'msg bot thinking';
-    thinkingEl.innerHTML = '<div class="dots"><i></i><i></i><i></i></div><span>الفني بيفكر في حالتك... استنى ثواني</span>';
-    logEl.appendChild(thinkingEl);
-    logEl.scrollTop = logEl.scrollHeight;
+  let thinkTimer = null;
+
+function showThinking() {
+  const isFirst = messages.filter(function (m) { return m.role === 'user'; }).length <= 1;
+  const expected = isFirst ? 60 : 15;
+
+  thinkingEl = document.createElement('div');
+  thinkingEl.className = 'msg bot thinking';
+  thinkingEl.innerHTML = '<div class="dots"><i></i><i></i><i></i></div><span></span>';
+  logEl.appendChild(thinkingEl);
+  logEl.scrollTop = logEl.scrollHeight;
+
+  const txt = thinkingEl.querySelector('span');
+  const t0 = Date.now();
+
+  function tick() {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    const left = expected - s;
+    if (left > 0) {
+      txt.textContent = isFirst
+        ? 'الفني بيحلل حالتك بالتفصيل... الرد متوقع خلال حوالي ' + left + ' ثانية'
+        : 'الفني بيراجع ردك... الرد متوقع خلال حوالي ' + left + ' ثانية';
+    } else {
+      txt.textContent = 'لسه بيجهز الرد... عدّى ' + s + ' ثانية، استنى شوية';
+    }
   }
-  function hideThinking() {
-    if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
-  }
+  tick();
+  thinkTimer = setInterval(tick, 1000);
+}
+
+function hideThinking() {
+  if (thinkTimer) { clearInterval(thinkTimer); thinkTimer = null; }
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+}
 
   function updateCounter() {
     if (followups === 0) { counterEl.style.display = 'none'; return; }
@@ -479,7 +503,7 @@ async function askDiagnose(payload) {
 
   const deadline = Date.now() + 120000; // ننتظر دقيقتين كحد أقصى
   while (Date.now() < deadline) {
-    await new Promise(function (r) { setTimeout(r, 2500); });
+    await new Promise(function (r) { setTimeout(r, 1500); });
     try {
       const res = await fetch('/.netlify/functions/diagnose-result?id=' + encodeURIComponent(jobId));
       const j = await res.json();
@@ -529,9 +553,12 @@ async function askDiagnose(payload) {
       messages.push({ role: 'model', text: answer });
       addMsg(answer, 'bot');
       showUnsolved();
-      if (followups >= MAX_FOLLOWUPS) {
-        endChat();
-      }
+if (followups < MAX_FOLLOWUPS) {
+  addMsg('لو عايز تعرف السعر اكتب: السعر كام؟ أو لو عندك معلومة زيادة عن العطل اكتبها وهرد عليك بسرعة.', 'bot');
+}
+if (followups >= MAX_FOLLOWUPS) {
+  endChat();
+}
     } catch (e) {
       hideThinking();
       addMsg('حصل خطأ في الاتصال. تأكد من النت وحاول تاني.', 'bot', null, true);
