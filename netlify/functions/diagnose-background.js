@@ -220,6 +220,8 @@ async function proofread(KEY, text, startedAt) {
 
   return fixed;
     }
+const infoText = \`معلومات من قواعد بيانات الورشة عن الجهاز ده: \${phoneInfo}\`;
+
 function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo }) {
   const today = new Date().toISOString().slice(0, 10);
   const osKnown = os && os !== 'غير محدد' && os.trim() !== '';
@@ -233,7 +235,7 @@ function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInf
 - إصدار النظام: ${osKnown ? os : 'لم يحدده العميل'}
 - نوع العيب: ${fault}
 - تاريخ اليوم: ${today}
-`معلومات من قاعدة بيانات الورشة عن الجهاز ده: ${phoneInfo}
+${infoText}
 
 معرفتك بالجهاز والنظام (مهم جدًا):
 - اعتمد على معرفتك بهذا الموديل بالتحديد: مواصفاته، وواجهة النظام عليه، وأعطاله الشائعة.
