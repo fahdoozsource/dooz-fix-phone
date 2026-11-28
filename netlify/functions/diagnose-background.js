@@ -220,7 +220,7 @@ async function proofread(KEY, text, startedAt) {
 
   return fixed;
     }
-const infoText = \`معلومات من قواعد بيانات الورشة عن الجهاز ده: \${phoneInfo}\`;
+const infoText = phoneInfo;
 
 function buildSystemPrompt({ brand, modelName, os, fault, isFirstReply, phoneInfo }) {
   const today = new Date().toISOString().slice(0, 10);
