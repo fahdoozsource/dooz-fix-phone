@@ -316,7 +316,8 @@ exports.handler = async (event) => {
   const os = String(data.os || 'غير محدد').slice(0, 80);
   const fault = String(data.fault || 'غير محدد').slice(0, 120);
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
-
+  console.log('بدء الفحص المحلي');
+  
     // === فحص البيانات المحلية أولاً ===
   let localAnswer = null;
   // افترض وجود كائنphonesData يحتوي على الأعطال والحلول مسجلة
@@ -327,7 +328,8 @@ exports.handler = async (event) => {
       localAnswer = deviceProblems[fault];
     }
   }
-
+  console.log('نتيجة الفحص:', localAnswer);
+  
   if (localAnswer) {
     return respond(200, { answer: localAnswer + '\n\n(تم التشخيص من قاعدة البيانات المحلية)', ended: false });
   }
